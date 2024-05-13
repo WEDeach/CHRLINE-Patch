@@ -1,2 +1,7 @@
 
 *.pyc
+/CHRLINE/.data
+/CHRLINE/.database
+/CHRLINE/.e2eeKeys
+/CHRLINE/.images
+/CHRLINE/.refreshToken

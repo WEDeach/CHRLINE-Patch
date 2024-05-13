@@ -3,14 +3,16 @@
 發送組合貼圖.
 
 至多 6 個貼圖, 只要參數有誤都是回應 Code:20737.
-
+輸入 ".csstk" 即可查看效果
+截至2024/05/13 WIN版並未支持組合貼圖, 但可以使用API發送
+此舉可能導致封禁帳號, 請自行使用可信任device與version.
 """
 from CHRLINE import CHRLINE
 from CHRLINE.hooks import HooksTracer
 from CHRLINE.helpers.bulders.combinations_sticker import CombinationSticker
 
 # login
-cl = CHRLINE()
+cl = CHRLINE(device="DESKTOPWIN", version="8.7.0.3302", forceTMCP=True, useThrift=True)
 
 # init hooks
 tracer = HooksTracer(
@@ -60,7 +62,6 @@ class NormalCmd(object):
 tracer.run(
     2,
     **{
-        # 'initServices': [3, 5]
-        "initServices": [1, 6, 8, 10]
+        'initServices': [5]
     }
 )

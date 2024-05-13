@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 
 
+from ..helpers.bulders.combinations_sticker import CombinationSticker
+
+
 class ShopService(object):
     ShopService_REQ_TYPE = 3
     ShopService_RES_TYPE = 3
@@ -1290,3 +1293,13 @@ class ShopService(object):
         params = []
         sqrd = self.generateDummyProtocol(METHOD_NAME, params, self.ShopService_REQ_TYPE)
         return self.postPackDataAndGetUnpackRespData(self.ShopService_API_PATH ,sqrd, self.ShopService_RES_TYPE)
+    
+    def createCombinationSticker(self, builder: CombinationSticker):
+        """Create combination sticker."""
+        METHOD_NAME = "createCombinationSticker"
+        params = params = [
+            [12, 2, builder.wrap()]
+        ]
+        print(params)
+        sqrd = self.generateDummyProtocol(METHOD_NAME, params, self.ShopService_REQ_TYPE)
+        return self.postPackDataAndGetUnpackRespData(self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE)

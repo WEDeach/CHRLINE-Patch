@@ -7,7 +7,7 @@ gevent.monkey.patch_all()
 from .exceptions import LineServiceException
 from .e2ee import E2EE
 from .cube import LineCube
-from .helpers import Helpers
+from .helper import ChrHelper
 from .timelineBiz import TimelineBiz
 from .timeline import Timeline
 from .object import Object
@@ -20,6 +20,7 @@ from os import system
 
 
 class CHRLINE(
+    ChrHelper,
     Models,
     Config,
     API,
@@ -28,7 +29,6 @@ class CHRLINE(
     Object,
     Timeline,
     TimelineBiz,
-    Helpers,
     LineCube,
     E2EE,
 ):
@@ -101,6 +101,9 @@ class CHRLINE(
         self.encType = encType
         self.isDebug = debug
         self.customDataId = customDataId
+        self.can_use_square = False
+        self.squares: dict = {}
+        ChrHelper.__init__(self, cl=self)
         Models.__init__(self, savePath)
         Config.__init__(self, device)
         self.initAppConfig(device, version, os_name, os_version, os_model)
@@ -173,7 +176,6 @@ class CHRLINE(
         Poll.__init__(self)
         Object.__init__(self)
         LineCube.__init__(self)
-        Helpers.__init__(self)
 
         self.is_login = True
 

@@ -3,7 +3,7 @@
 class HookUtility(object):
 
     def __init__(self):
-        pass
+        super().__init__()
 
     def checkCmd(self, **kwargs):
         print(f'[checkCmd] {kwargs}')

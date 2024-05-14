@@ -61,11 +61,6 @@ class Models(object):
             os.makedirs(savePath)
         return savePath
 
-    def log(self, text, debugOnly=False):
-        if debugOnly and not self.isDebug:
-            return
-        print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {text}")
-
     def genOBSParams(self, newList, returnAs="json", ext="jpg"):
         oldList = {"name": f"CHRLINE-{int(time.time())}.{ext}", "ver": "1.0"}
         if returnAs not in ["json", "b64", "default"]:

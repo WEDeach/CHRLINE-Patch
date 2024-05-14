@@ -49,6 +49,7 @@ class SqliteDatabase(BaseDatabase):
         cursor = self._sqlite.cursor()
         cursor.execute(SQLITE3_SELECT_CMD, (_key, ))
         rows = cursor.fetchone()
+        cursor.close()
         return _defVal if not rows else self._val2obj(rows[2])
 
     def saveData(self, _key, _val):
@@ -58,6 +59,7 @@ class SqliteDatabase(BaseDatabase):
         cursor = self._sqlite.cursor()
         cursor.execute(SQLITE3_SAVE_DATA_CMD, (_key, self._obj2val(_val)))
         self.saveDatabase()
+        cursor.close()
 
     def saveDatabase(self):
         self._sqlite.commit()
@@ -88,6 +90,7 @@ class SqliteDatabase(BaseDatabase):
         """
         cursor = self._sqlite.cursor()
         cursor.execute(SQLITE3_CHRLINE_UNIT_TABLE_CMD)
+        cursor.close()
 
 class JsonDatabase(BaseDatabase):
 

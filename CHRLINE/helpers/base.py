@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from typing import TYPE_CHECKING, Optional
+from ..logger import Logger
 
 if TYPE_CHECKING:
     from ..client import CHRLINE
@@ -17,5 +18,13 @@ class BaseHelper:
             raise NotImplementedError
         return self.__client
 
-    def log(self, *args, **kwargs):
-        return self.client.log
+    def log(self, text: str, debugOnly: bool = False):
+        logger = self.get_logger()
+        if debugOnly:
+            return logger.debug(text)
+        return logger.info(text)
+
+    @staticmethod
+    def get_logger(logger_name: str = "BASE"):
+        """Get logger by name."""
+        return Logger.new(logger_name)

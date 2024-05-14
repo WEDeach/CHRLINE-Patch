@@ -104,6 +104,9 @@ class CHRLINE(
         self.can_use_square = False
         self.squares: dict = {}
         ChrHelper.__init__(self, cl=self)
+        self.logger = self.get_logger
+        if self.isDebug:
+            self.logger.set_level(0)
         Models.__init__(self, savePath)
         Config.__init__(self, device)
         self.initAppConfig(device, version, os_name, os_version, os_model)

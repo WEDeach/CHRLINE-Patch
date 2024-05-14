@@ -305,6 +305,9 @@ class CombinationSticker:
         return StickerLayoutStickerInfo(
             stickerId, productId, stickerHash, stickerOptions, stickerVersion
         )
+        
+    def set_previous_combination_sticker_id(self, new_val: str):
+        self.__idOfPreviousVersionOfCombinationSticker = new_val
     
     def wrap(self):
         r = []
@@ -315,4 +318,6 @@ class CombinationSticker:
             for i in self.stickers:
                 sl.append(i.wrap())
         r.append([15, 2, [12, sl]])
+        if self.id_of_previous_version_of_combination_sticker:
+            r.append([11, 3, self.id_of_previous_version_of_combination_sticker])
         return r

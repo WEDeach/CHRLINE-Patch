@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from .dyher.connData import LegyPushOABot
 from .hksc.types import HookTypes
 from .hksc.events import HookEvents
 from .hksc.utility import HookUtility
@@ -8,9 +9,16 @@ import time
 
 
 class HooksTracer(HookTypes, HookUtility):
-    HooksType = {"Operation": 0, "Content": 1, "Command": 2, "SquareEvent": 7}
+    HooksType = {
+        "Operation": 0,
+        "Content": 1,
+        "Command": 2,
+        "SquareEvent": 7,
+        "OABot": 10,
+    }
 
     def __init__(self, cl, db=None, prefixes=["!"], accounts=[], db_type=3):
+        super().__init__()
         self.cl = cl
         self.db = None
         if db_type == 2:
@@ -20,11 +28,6 @@ class HooksTracer(HookTypes, HookUtility):
         else:
             raise NotImplementedError()
         self.prefixes = prefixes
-        self.opFuncs = []
-        self.contFuncs = []
-        self.cmdFuncs = []
-        self.beforeFuncs = []
-        self.afterFuncs = []
         self.eventFuncs = HookEvents()
         self.accounts = accounts
 
@@ -53,11 +56,17 @@ class HooksTracer(HookTypes, HookUtility):
                     _td.start()
             elif fetchType == 2:
                 cl.legyPushers.hook_callback = self.PushCallback
-                if cl.DEVICE_TYPE not in ["ANDROID", "IOS", "DESKTOPWIN", "DESKTOPMAC", "IOSIPAD"]:
+                if cl.DEVICE_TYPE not in [
+                    "ANDROID",
+                    "IOS",
+                    "DESKTOPWIN",
+                    "DESKTOPMAC",
+                    "IOSIPAD",
+                ]:
                     raise ValueError(f"device not supported PUSH: {cl.DEVICE_TYPE}")
                 try:
                     cl.legyPushers.conns = []
-                    cl.legyPushers.initializeConn()
+                    cl.legyPushers.initializeConn(**kwargs)
                     self.eventFuncs.onInitializePushConn()
                     cl.legyPushers.InitAndRead(**kwargs)
                 except Exception as e:
@@ -78,6 +87,17 @@ class HooksTracer(HookTypes, HookUtility):
             _a = self.cmdFuncs
         elif type == self.HooksType["SquareEvent"]:
             _a = self.seFuncs
+        elif type == self.HooksType["OABot"]:
+            event_type = "_"
+            if isinstance(data, LegyPushOABot):
+                if data._type:
+                    event_type = data._type
+            elif isinstance(data, dict):
+                event_type = data.get("type", "_")
+            _a = self.OABotFuncs
+            if event_type in _a:
+                return _a[event_type](self, data, cl, *attr)
+            return False
         else:
             raise Exception(f"unknow type: {type}")
         _b = self.beforeFuncs
@@ -101,6 +121,8 @@ class HooksTracer(HookTypes, HookUtility):
             ht = "SquareEvent"
         elif serviceType == 5:
             ht = "Operation"
+        elif serviceType == 10:
+            ht = "OABot"
         else:
             raise ValueError(f"Invalid serviceType: {serviceType}")
         _td = threading.Thread(target=self.trace, args=(event, self.HooksType[ht], cl))

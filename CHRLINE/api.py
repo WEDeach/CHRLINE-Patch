@@ -32,6 +32,8 @@ from .services.LoginService import LoginService
 from .services.InterlockService import InterlockService
 from .services.RelationService import RelationService
 from .services.SquareLiveTalkService import SquareLiveTalkService
+from .services.CoinService import CoinService
+from .services.ShopCollectionService import ShopCollectionService
 from .server import Server
 from .exceptions import LineServiceException
 import rsa
@@ -66,7 +68,9 @@ class API(
     LoginService,
     InterlockService,
     RelationService,
-    SquareLiveTalkService
+    SquareLiveTalkService,
+    CoinService,
+    ShopCollectionService
 ):
     _msgSeq = 0
     url = "https://gf.line.naver.jp/enc"
@@ -120,6 +124,8 @@ class API(
         InterlockService.__init__(self)
         RelationService.__init__(self)
         SquareLiveTalkService.__init__(self)
+        CoinService.__init__(self)
+        ShopCollectionService.__init__(self)
 
     def requestPwlessLogin(self, phone, pw):
         pwless_code = self.checkAndGetValue(self.createPwlessSession(phone), 1, "val_1")

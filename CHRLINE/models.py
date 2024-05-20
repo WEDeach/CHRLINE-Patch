@@ -4,6 +4,7 @@ import json
 import os
 import struct
 import time
+from typing import Union
 import requests
 import urllib
 from base64 import b64encode
@@ -392,7 +393,7 @@ class Models(object):
     def postPackDataAndGetUnpackRespData(
         self,
         path: str,
-        bdata: bytes,
+        bdata: Union[bytes, DummyProtocolSerializer],
         ttype: int = 3,
         encType: int = None,
         headers: dict = None,

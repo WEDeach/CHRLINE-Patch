@@ -50,7 +50,7 @@ class CHRLINE(
         useThrift: bool = False,
         forceTMCP: bool = False,
         savePath: str = None,
-        os_model: str = None
+        os_model: str = None,
     ):
         r"""
         Line client for CHRLINE.
@@ -94,7 +94,7 @@ class CHRLINE(
         os_model: `str`
             Set System model name.
         """
-        if device == "CHROMEOS" and version is None:
+        if device == "CHROMEOS" and version is None and not noLogin:
             raise ValueError(
                 'Please specify the version of LINE for CHROMEOS: `CHRLINE(..., version="3")`\nor just use other device type to login: `CHRLINE(..., device="DESTOPWIN")`'
             )
@@ -104,9 +104,9 @@ class CHRLINE(
         self.can_use_square = False
         self.squares: dict = {}
         ChrHelper.__init__(self, cl=self)
-        self.logger = self.get_logger
+        self.logger = self.get_logger()
         if self.isDebug:
-            self.logger.set_level(0)
+            self.logger.ins.setLevel(0)
         Models.__init__(self, savePath)
         Config.__init__(self, device)
         self.initAppConfig(device, version, os_name, os_version, os_model)
@@ -139,6 +139,7 @@ class CHRLINE(
 
     def initAll(self):
         self.checkNextToken(False)
+        print("getProfile")
         self.profile = self.getProfile()
         if self.profile is None:
             raise RuntimeError(

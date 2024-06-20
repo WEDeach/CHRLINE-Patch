@@ -119,7 +119,7 @@ class HooksTracer(HookTypes, HookUtility):
         ht = None
         if serviceType == 3:
             ht = "SquareEvent"
-        elif serviceType == 5:
+        elif serviceType in [5, 8]:
             ht = "Operation"
         elif serviceType == 10:
             ht = "OABot"

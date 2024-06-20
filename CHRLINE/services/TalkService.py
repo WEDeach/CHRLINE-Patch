@@ -1,6 +1,6 @@
 ﻿# -*- coding: utf-8 -*-
 import httpx
-from typing import List
+from typing import List, Optional
 from random import randint
 from .BaseService import BaseService, BaseServiceHandler, BaseServiceStruct
 
@@ -30,6 +30,7 @@ class TalkService(BaseService):
         relatedMessageId: str = None,
         location: dict = None,
         chunk: list = None,
+        squareChatMid: Optional[str] = None,
     ):
         if contentMetadata is None:
             contentMetadata = {}
@@ -39,9 +40,16 @@ class TalkService(BaseService):
         RES_TYPE = 3
         ENDPOINT = self.LINE_NORMAL_ENDPOINT
         relatedMessageServiceCode = 1
+        TO_TYPE = self.getToType(to)
 
-        if self.getToType(to) == 4:
+        if TO_TYPE == 4:
             SERVICE_NAME = "SquareService"
+            RES_TYPE = 4
+            ENDPOINT = "/SQ1"
+            relatedMessageServiceCode = 2
+        elif TO_TYPE == 7:
+            SERVICE_NAME = "SquareService"
+            METHOD_NAME = "sendSquareThreadMessage"
             RES_TYPE = 4
             ENDPOINT = "/SQ1"
             relatedMessageServiceCode = 2
@@ -77,7 +85,7 @@ class TalkService(BaseService):
             )
             message.append([8, 24, relatedMessageServiceCode])
         params = [[8, 1, self.getCurrReqId()], [12, 2, message]]
-        if self.getToType(to) == 4:
+        if TO_TYPE == 4:
             params = [
                 [
                     12,
@@ -89,6 +97,19 @@ class TalkService(BaseService):
                     ],
                 ]
             ]
+        elif TO_TYPE == 7:
+            assert squareChatMid
+            threadMessage = [
+                [12, 1, message],
+                [8, 3, 5],
+            ]
+            params = [
+                [8, 1, self.getCurrReqId("sq")],
+                [11, 2, squareChatMid],
+                [11, 3, to],
+                [12, 4, threadMessage],
+            ]
+            params = [[12, 1, params]]
         else:
             params = [[8, 1, self.getCurrReqId()], [12, 2, message]]
         sqrd = self.generateDummyProtocol(METHOD_NAME, params, 4)
@@ -113,6 +134,7 @@ class TalkService(BaseService):
         contentMetadata: dict = None,
         location: dict = None,
         relatedMessageId: str = None,
+        squareChatMid: Optional[str] = None,
     ):
         to = self.checkAndGetValue(msgData, "to", 2)
         toType = self.checkAndGetValue(msgData, "toType", 3)
@@ -123,6 +145,10 @@ class TalkService(BaseService):
         opType = self.checkAndGetValue(msgData, "opType")
         if toType == 0 and opType in [26, None]:  # opType for hooks
             to = self.checkAndGetValue(msgData, "_from", 1)
+        elif toType == 7:
+            if squareChatMid is None:
+                squareChatMid = self.checkAndGetValue(msgData, "squareChatMid")
+            assert squareChatMid
         if self.checkAndGetValue(msgData, "isE2EE") is True:
             if contentType == 15:
                 text = location  # difference
@@ -130,7 +156,12 @@ class TalkService(BaseService):
                 to, text, contentType, contentMetadata, relatedMessageId
             )
         return self.sendMessage(
-            to, text, contentType, contentMetadata, relatedMessageId
+            to,
+            text,
+            contentType,
+            contentMetadata,
+            relatedMessageId,
+            squareChatMid=squareChatMid,
         )
 
     def sendContact(self, to, mid, displayName=None):
@@ -1268,39 +1299,11 @@ class TalkService(BaseService):
             self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
         )
 
-    def getAllContactIds(self):
+    def getAllContactIds(self) -> List[str]:
+        """Get all contact ids."""
         METHOD_NAME = "getAllContactIds"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            16,
-            103,
-            101,
-            116,
-            65,
-            108,
-            108,
-            67,
-            111,
-            110,
-            116,
-            97,
-            99,
-            116,
-            73,
-            100,
-            115,
-            0,
-            0,
-            0,
-            0,
-            0,
-        ]
+        params = []
+        sqrd = self.generateDummyProtocol(METHOD_NAME, params, 4)
         return self.postPackDataAndGetUnpackRespData(
             self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
         )

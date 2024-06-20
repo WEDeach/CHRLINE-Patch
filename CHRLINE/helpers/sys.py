@@ -15,6 +15,7 @@ class SysHelper(BaseHelper):
         SQUARE_CHAT(4),
         SQUARE_MEMBER(5),
         BOT(6);
+        SQUARE_THREAD(7);
         """
         _u = mid[0]
         if _u == "u":
@@ -31,6 +32,9 @@ class SysHelper(BaseHelper):
             return 5
         if _u == "v":
             return 6
+        if _u == "t":
+            return 7
+
 
     def checkRespIsSuccessWithLpv(self, resp, lpv: int = 1, status_code: int = 200):
         ckStatusCode = lpv != 1

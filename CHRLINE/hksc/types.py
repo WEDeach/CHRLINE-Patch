@@ -148,6 +148,15 @@ class HookTypes(object):
                 event = args[0]
                 _type = self.cl.checkAndGetValue(event, "type", 3)
                 if _type == SquareEventType:
+                    if _type == 54:
+                        # Thread
+                        payload = self.cl.checkAndGetValue(event, "payload", 4)
+                        notificationThreadMessage = self.cl.checkAndGetValue(payload, "notificationThreadMessage", 52)
+                        threadMid = self.cl.checkAndGetValue(notificationThreadMessage, "threadMid", 1)
+                        chatMid = self.cl.checkAndGetValue(notificationThreadMessage, "chatMid", 2)
+                        squareMessage = self.cl.checkAndGetValue(notificationThreadMessage, "squareMessage", 3)
+                        message = self.cl.checkAndGetValue(squareMessage, "message", 1)
+                        self.cl.checkAndSetValue(message, "squareChatMid", chatMid)
                     func(self, *args)
                     return True
                 return False

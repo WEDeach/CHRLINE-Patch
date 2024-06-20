@@ -34,6 +34,8 @@ from .services.RelationService import RelationService
 from .services.SquareLiveTalkService import SquareLiveTalkService
 from .services.CoinService import CoinService
 from .services.ShopCollectionService import ShopCollectionService
+from .services.PremiumFontService import PremiumFontService
+
 from .server import Server
 from .exceptions import LineServiceException
 import rsa
@@ -70,7 +72,8 @@ class API(
     RelationService,
     SquareLiveTalkService,
     CoinService,
-    ShopCollectionService
+    ShopCollectionService,
+    PremiumFontService,
 ):
     _msgSeq = 0
     url = "https://gf.line.naver.jp/enc"
@@ -126,6 +129,7 @@ class API(
         SquareLiveTalkService.__init__(self)
         CoinService.__init__(self)
         ShopCollectionService.__init__(self)
+        PremiumFontService.__init__(self)
 
     def requestPwlessLogin(self, phone, pw):
         pwless_code = self.checkAndGetValue(self.createPwlessSession(phone), 1, "val_1")
@@ -368,15 +372,15 @@ class API(
     def requestSQR3(self, isSelf=True):
         """
         Request Secondary QrCode Login for secure.
-        
+
         Source: https://github.com/DeachSword/CHRLINE/blob/445e433b1fbe9a020f6bc1cbd0eb7af3f75ce196/examples/test_sqr_4_secure.py
         """
         log4Debug = False
         sqr = self.checkAndGetValue(self.createSession(), 1)
         qr4s = self.createQrCodeForSecure(sqr)
         self.log(qr4s, log4Debug)
-        url = self.checkAndGetValue(qr4s, 'callbackUrl', 1)
-        nonce = self.checkAndGetValue(qr4s, 'nonce', 4)
+        url = self.checkAndGetValue(qr4s, "callbackUrl", 1)
+        nonce = self.checkAndGetValue(qr4s, "nonce", 4)
         self.log(f"nonce: {nonce}", log4Debug)
         secret, secretUrl = self.createSqrSecret()
         url = url + secretUrl
@@ -390,16 +394,18 @@ class API(
                 c = self.createPinCode(sqr)
                 yield f"請輸入pincode: {c}"
                 self.checkPinCodeVerified(sqr)
-            e = self.qrCodeLoginV2ForSecure(sqr, self.MODEL_NAME, self.USERDOMAIN, nonce)
+            e = self.qrCodeLoginV2ForSecure(
+                sqr, self.MODEL_NAME, self.USERDOMAIN, nonce
+            )
             self.log(e, log4Debug)
-            cert = self.checkAndGetValue(e, 'certificate', 1)
+            cert = self.checkAndGetValue(e, "certificate", 1)
             self.saveSqrCert(cert)
-            tokenV3Info = self.checkAndGetValue(e, 'tokenV3IssueResult', 3)
-            _mid = self.checkAndGetValue(e, 'mid', 4)
-            metadata = self.checkAndGetValue(e, 'metaData', 10)
+            tokenV3Info = self.checkAndGetValue(e, "tokenV3IssueResult", 3)
+            _mid = self.checkAndGetValue(e, "mid", 4)
+            metadata = self.checkAndGetValue(e, "metaData", 10)
             self.decodeE2EEKeyV1(metadata, secret, _mid)
-            authToken = self.checkAndGetValue(tokenV3Info, 'accessToken', 1)
-            refreshToken = self.checkAndGetValue(tokenV3Info, 'refreshToken', 2)
+            authToken = self.checkAndGetValue(tokenV3Info, "accessToken", 1)
+            refreshToken = self.checkAndGetValue(tokenV3Info, "refreshToken", 2)
             self.saveCacheData(".refreshToken", authToken, refreshToken)
             print(f"AuthToken: {authToken}")
             print(f"RefreshToken: {refreshToken}")
@@ -508,7 +514,6 @@ class API(
     def qrCodeLogin(
         self, authSessionId: str, secret: str, autoLoginIsRequired: bool = True
     ):
-
         params = [
             [
                 12,

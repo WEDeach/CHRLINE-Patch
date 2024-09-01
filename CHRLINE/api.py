@@ -1,48 +1,52 @@
 # -*- coding: utf-8 -*-
-from .services.TestService import TestService
-from .services.TalkService import TalkService
-from .services.SquareService import SquareService
-from .services.SquareBotService import SquareBotService
-from .services.ShopService import ShopService
-from .services.SettingsService import SettingsService
-from .services.SecondaryPwlessLoginService import SecondaryPwlessLoginService
-from .services.SecondaryPwlessLoginPermitNoticeService import (
-    SecondaryPwlessLoginPermitNoticeService,
-)
-from .services.PrimaryAccountInitService import PrimaryAccountInitService
-from .services.LiffService import LiffService
-from .services.E2EEKeyBackupService import E2EEKeyBackupService
-from .services.ChatAppService import ChatAppService
-from .services.ChannelService import ChannelService
-from .services.CallService import CallService
-from .services.BuddyService import BuddyService
-from .services.AuthService import AuthService
+import base64
+import binascii
+
+import httpx
+import requests
+import rsa
+
+from .exceptions import LineServiceException
+from .server import Server
+from .services.AccessTokenRefreshService import AccessTokenRefreshService
 from .services.AccountAuthFactorEapConnectService import (
     AccountAuthFactorEapConnectService,
 )
-from .services.AccessTokenRefreshService import AccessTokenRefreshService
+from .services.AuthService import AuthService
+from .services.BuddyService import BuddyService
+from .services.CallService import CallService
+from .services.ChannelService import ChannelService
+from .services.ChatAppService import ChatAppService
+from .services.CoinService import CoinService
+from .services.E2EEKeyBackupService import E2EEKeyBackupService
 from .services.HomeSafetyCheckService import HomeSafetyCheckService
+from .services.InterlockService import InterlockService
+from .services.LiffService import LiffService
+from .services.LoginService import LoginService
+from .services.PremiumFontService import PremiumFontService
+from .services.PrimaryAccountInitService import PrimaryAccountInitService
+from .services.PrimaryAccountSmartSwitchRestorePreparationService import (
+    PrimaryAccountSmartSwitchRestorePreparationService,
+)
 from .services.PrimaryQrCodeMigrationLongPollingService import (
     PrimaryQrCodeMigrationLongPollingService,
 )
 from .services.PrimaryQrCodeMigrationPreparationService import (
     PrimaryQrCodeMigrationPreparationService,
 )
-from .services.LoginService import LoginService
-from .services.InterlockService import InterlockService
 from .services.RelationService import RelationService
-from .services.SquareLiveTalkService import SquareLiveTalkService
-from .services.CoinService import CoinService
+from .services.SecondaryPwlessLoginPermitNoticeService import (
+    SecondaryPwlessLoginPermitNoticeService,
+)
+from .services.SecondaryPwlessLoginService import SecondaryPwlessLoginService
+from .services.SettingsService import SettingsService
 from .services.ShopCollectionService import ShopCollectionService
-from .services.PremiumFontService import PremiumFontService
-
-from .server import Server
-from .exceptions import LineServiceException
-import rsa
-import requests
-import httpx
-import base64
-import binascii
+from .services.ShopService import ShopService
+from .services.SquareBotService import SquareBotService
+from .services.SquareLiveTalkService import SquareLiveTalkService
+from .services.SquareService import SquareService
+from .services.TalkService import TalkService
+from .services.TestService import TestService
 
 
 class API(
@@ -130,6 +134,7 @@ class API(
         CoinService.__init__(self)
         ShopCollectionService.__init__(self)
         PremiumFontService.__init__(self)
+        self.s_smart_switch = PrimaryAccountSmartSwitchRestorePreparationService(self)
 
     def requestPwlessLogin(self, phone, pw):
         pwless_code = self.checkAndGetValue(self.createPwlessSession(phone), 1, "val_1")
@@ -146,7 +151,7 @@ class API(
         secret, secretPK = self.createSqrSecret(True)
         self.putExchangeKey(pwless_code, secretPK)
         self.requestPaakAuth(pwless_code)
-        print(f"need Paak Auth Confind")
+        print("need Paak Auth Confind")
         self.checkPaakAuthenticated(pwless_code)
         ek = self.getE2eeKey(pwless_code)
         try:
@@ -217,7 +222,7 @@ class API(
                 try:
                     self.decodeE2EEKeyV1(e2eeInfo, secret)
                 except:
-                    raise Exception(f"e2eeInfo decode failed, try again")
+                    raise Exception("e2eeInfo decode failed, try again")
                 blablabao = self.encryptDeviceSecret(
                     base64.b64decode(e2eeInfo["publicKey"]),
                     secret,
@@ -230,7 +235,7 @@ class API(
                 res = self.loginV2(**_req, verifier=e2eeLogin)
                 self.saveEmailCert(email, self.checkAndGetValue(res, 2, "val_2"))
             except:
-                raise Exception(f"confirmE2EELogin failed, try again")
+                raise Exception("confirmE2EELogin failed, try again")
         self.authToken = self.checkAndGetValue(res, 1)
         print(f"AuthToken: {self.authToken}")
         return True
@@ -269,13 +274,13 @@ class API(
         if self.checkAndGetValue(res, 9, "val_9") is None:
             verifier = self.checkAndGetValue(res, 3, "val_3")
             if self.checkAndGetValue(res, 5, "val_5") == 3:
-                print(f"need device confirm")
+                print("need device confirm")
             print(f"Enter Pincode: {pincode.decode()}")
             e2eeInfo = self.checkLoginV2PinCode(verifier)["metadata"]
             try:
                 e2eeKeyInfo = self.decodeE2EEKeyV1(e2eeInfo, secret)
             except:
-                raise Exception(f"e2eeInfo decode failed, try again")
+                raise Exception("e2eeInfo decode failed, try again")
             blablabao = self.encryptDeviceSecret(
                 base64.b64decode(e2eeInfo["publicKey"]),
                 secret,

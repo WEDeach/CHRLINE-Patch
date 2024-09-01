@@ -1,6 +1,7 @@
 import logging
-from rich.logging import RichHandler
 from typing import List, Optional, Union
+
+from rich.logging import RichHandler
 
 
 class Logger:
@@ -29,7 +30,6 @@ class Logger:
             l = logging.getLogger(self.key_name)
             l.parent = None
             l.name = self.name
-            l.setLevel(logging.INFO)
             h = RichHandler(level=logging.NOTSET, show_path=True, rich_tracebacks=True)
             f = logging.Formatter("%(name)s %(message)s")
             f.datefmt = "[%Y/%m/%d %X]"

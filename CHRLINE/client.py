@@ -1,22 +1,25 @@
+from typing import Optional
+
 import gevent.monkey
 
 from .services.thrift.ttypes import SquareException
 
 gevent.monkey.patch_all()
 
-from .exceptions import LineServiceException
-from .e2ee import E2EE
+from os import system
+
+from .api import API
+from .config import Config
 from .cube import LineCube
+from .e2ee import E2EE
+from .exceptions import LineServiceException
 from .helper import ChrHelper
-from .timelineBiz import TimelineBiz
-from .timeline import Timeline
+from .models import Models
 from .object import Object
 from .poll import Poll
 from .thrift import Thrift
-from .api import API
-from .config import Config
-from .models import Models
-from os import system
+from .timeline import Timeline
+from .timelineBiz import TimelineBiz
 
 
 class CHRLINE(
@@ -34,23 +37,23 @@ class CHRLINE(
 ):
     def __init__(
         self,
-        authTokenOrEmail: str = None,
-        password: str = None,
+        authTokenOrEmail: Optional[str] = None,
+        password: Optional[str] = None,
         device: str = "CHROMEOS",
-        version: str = None,
-        os_name: str = None,
-        os_version: str = None,
+        version: Optional[str] = None,
+        os_name: Optional[str] = None,
+        os_version: Optional[str] = None,
         noLogin: bool = False,
         encType: int = 1,
         debug: bool = False,
-        customDataId: str = None,
-        phone: str = None,
-        region: str = None,
-        forwardedIp: str = None,
+        customDataId: Optional[str] = None,
+        phone: Optional[str] = None,
+        region: Optional[str] = None,
+        forwardedIp: Optional[str] = None,
         useThrift: bool = False,
         forceTMCP: bool = False,
-        savePath: str = None,
-        os_model: str = None,
+        savePath: Optional[str] = None,
+        os_model: Optional[str] = None,
     ):
         r"""
         Line client for CHRLINE.
@@ -100,13 +103,15 @@ class CHRLINE(
             )
         self.encType = encType
         self.isDebug = debug
+        if customDataId is None:
+            customDataId = "CHRLINE_CUSTOM_0"
         self.customDataId = customDataId
         self.can_use_square = False
         self.squares: dict = {}
         ChrHelper.__init__(self, cl=self)
         self.logger = self.get_logger()
         if self.isDebug:
-            self.logger.ins.setLevel(0)
+            self.logger.set_root_level(0)
         Models.__init__(self, savePath)
         Config.__init__(self, device)
         self.initAppConfig(device, version, os_name, os_version, os_model)
@@ -139,7 +144,6 @@ class CHRLINE(
 
     def initAll(self):
         self.checkNextToken(False)
-        print("getProfile")
         self.profile = self.getProfile()
         if self.profile is None:
             raise RuntimeError(

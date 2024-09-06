@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import List, Optional
 
 import gevent.monkey
 
@@ -54,6 +54,8 @@ class CHRLINE(
         forceTMCP: bool = False,
         savePath: Optional[str] = None,
         os_model: Optional[str] = None,
+        rootLogLevel: int = 20,
+        logFilterNs: List[str] = [],
     ):
         r"""
         Line client for CHRLINE.
@@ -111,7 +113,10 @@ class CHRLINE(
         ChrHelper.__init__(self, cl=self)
         self.logger = self.get_logger()
         if self.isDebug:
-            self.logger.set_root_level(0)
+            rootLogLevel = 0
+        self.logger.set_root_level(rootLogLevel)
+        if logFilterNs:
+            self.logger.add_log_fliters(*logFilterNs)
         Models.__init__(self, savePath)
         Config.__init__(self, device)
         self.initAppConfig(device, version, os_name, os_version, os_model)

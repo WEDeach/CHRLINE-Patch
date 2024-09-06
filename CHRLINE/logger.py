@@ -1,11 +1,27 @@
 import logging
-from typing import Dict, List, Optional, Union
+import re
+from typing import Dict, List, Optional, Tuple, Union
 
 from rich.logging import RichHandler
 
 root = logging.RootLogger(logging.INFO)
+h = RichHandler(
+    level=logging.NOTSET, show_path=True, rich_tracebacks=True,
+)
+f = logging.Formatter("%(display_name)s %(message)s")
+f.datefmt = "[%Y/%m/%d %X]"
+h.setFormatter(f)
+root.handlers = [h]
+
+
 loggers: Dict[str, logging.Logger] = {}
 
+def root_handle(record):
+    dn = ""
+    for n in record.name.split("."):
+        dn += f"[{n.replace(' ', '_')}]"
+    record.display_name = dn
+    super(logging.RootLogger, root).handle(record)
 
 class Logger:
     def __init__(self, names: List[str]) -> None:
@@ -38,14 +54,8 @@ class Logger:
             if self.key_name not in loggers:
                 r = logging.getLogger(self.key_name)
                 r.parent = root
-                r.name = self.name
-                h = RichHandler(
-                    level=logging.NOTSET, show_path=True, rich_tracebacks=True,
-                )
-                f = logging.Formatter("%(name)s %(message)s")
-                f.datefmt = "[%Y/%m/%d %X]"
-                h.setFormatter(f)
-                r.handlers = [h]
+                r.name = self.key_name
+                r.handle = root_handle
                 loggers[self.key_name] = r
             else:
                 r = loggers[self.key_name]
@@ -91,3 +101,19 @@ class Logger:
     def set_root_level(self, level: Union[str, int]):
         """Set root-logger level."""
         root.setLevel(level)
+
+    def add_log_fliters(self, *names: str):
+        """Set root-logger level."""
+        filter1 = NsFliter(ns=names)
+        h.addFilter(filter1)
+
+class NsFliter(logging.Filter):
+    def __init__(self, ns: Tuple[str]):
+        self.ns = ns
+
+    def filter(self, record):
+        for n in self.ns:
+            pattern = re.compile(n, re.IGNORECASE)
+            if bool(pattern.match(record.name)):
+                return True
+        return False

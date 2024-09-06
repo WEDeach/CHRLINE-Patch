@@ -4,37 +4,37 @@ import json
 import os
 import struct
 import time
-from typing import Union
-import requests
-import urllib
 from base64 import b64encode
-from datetime import datetime
 from hashlib import md5
+from typing import Any, Optional, Union
+from urllib.parse import quote
 
 import axolotl_curve25519 as curve
 import Crypto.Cipher.PKCS1_OAEP as rsaenc
 import httpx
+import requests
 import xxhash
 from Crypto.Cipher import AES
 from Crypto.PublicKey import RSA
 from Crypto.Util.Padding import pad, unpad
+
 from thrift.transport.TTransport import TMemoryBuffer
 
-from .services.thrift.ttypes import TalkException
 from .exceptions import LineServiceException
+from .helper import ChrHelperProtocol
 from .serializers.DummyProtocol import (
     DummyProtocol,
     DummyProtocolData,
     DummyProtocolSerializer,
     DummyThrift,
 )
-
 from .services.thrift import *
-from .timeline import Timeline
 from .services.thrift.ap.TCompactProtocol import TCompactProtocol as tcProtocol
+from .services.thrift.ttypes import TalkException
+from .timeline import Timeline
 
 
-class Models(object):
+class Models(ChrHelperProtocol):
     def __init__(self, savePath):
         self.savePath = savePath or os.path.dirname(os.path.realpath(__file__))
         self.lcsStart = "0005"
@@ -50,11 +50,12 @@ class Models(object):
         self.encEncKey()
         # self.initWithBiz()
         # self.initWithAndroid(4)
+        self.__logger = self.client.logger.new("MODEL")
 
         # Init 3rd Models
         from .dyher.connManager import ConnManager
 
-        self.legyPushers = ConnManager(self)
+        self.legyPushers = ConnManager(self.client)
 
     def getSavePath(self, dirname: str):
         savePath = os.path.join(self.savePath, dirname)
@@ -69,7 +70,7 @@ class Models(object):
         oldList.update(newList)
         if "range" in oldList:
             new_range = "bytes 0-%s\/%s" % (
-                str(oldList["range"] - 1),
+                str(int(oldList["range"]) - 1),
                 str(oldList["range"]),
             )
             oldList.update({"range": new_range})
@@ -89,7 +90,7 @@ class Models(object):
         if os.path.exists(savePath + f"/{fn}"):
             self.authToken = open(savePath + f"/{fn}", "r").read()
             if old != self.authToken:
-                self.log(f"New Token: {self.authToken}", not log4NotDebug)
+                self.client.log(f"New Token: {self.authToken}", not log4NotDebug)
                 self.checkNextToken(log4NotDebug)
         return self.authToken
 
@@ -98,16 +99,16 @@ class Models(object):
         fn = md5(self.authToken.encode()).hexdigest()
         open(savePath + f"/{fn}", "w").write(newToken)
         self.authToken = newToken
-        self.log(f"New Token: {newToken}")
-        Timeline.__init__(self)
+        self.client.log(f"New Token: {newToken}")
+        Timeline.__init__(self.client)
 
     def tryRefreshToken(self):
         """Try to refresh token."""
         refreshToken = self.getCacheData(".refreshToken", self.authToken)
-        self.log(f"try to refresh access token... {refreshToken}")
+        self.client.log(f"try to refresh access token... {refreshToken}")
         if refreshToken is not None:
-            RATR = self.refreshAccessToken(refreshToken)
-            token = self.checkAndGetValue(RATR, "accessToken", 1)
+            RATR = self.client.refreshAccessToken(refreshToken)
+            token = self.client.checkAndGetValue(RATR, "accessToken", 1)
             # refreshToken = self.checkAndGetValue(RATR, 'refreshToken', 5)
             self.handleNextToken(token)
             self.saveCacheData(".refreshToken", token, refreshToken)
@@ -117,15 +118,15 @@ class Models(object):
 
     def getCustomData(self):
         savePath = self.getSavePath(".data")
-        fn = md5(self.customDataId.encode()).hexdigest()
+        fn = md5(self.client.customDataId.encode()).hexdigest()
         if os.path.exists(savePath + f"/{fn}"):
             self.custom_data = json.loads(open(savePath + f"/{fn}", "r").read())
-        self.log(f"Loading Custom Data: {fn}")
+        self.client.log(f"Loading Custom Data: {fn}")
         return True
 
     def saveCustomData(self):
         savePath = self.getSavePath(".data")
-        fn = md5(self.customDataId.encode()).hexdigest()
+        fn = md5(self.client.customDataId.encode()).hexdigest()
         open(savePath + f"/{fn}", "w").write(json.dumps(self.custom_data))
         return True
 
@@ -195,7 +196,7 @@ class Models(object):
 
     def decHeaders(self, data):
         headers = {}
-        tbin = self.TBinaryProtocol(self)
+        tbin = self.client.TBinaryProtocol(self)
         tbin.data = data
         dataLen = tbin.readI16() + 2
         headerLen = tbin.readI16()
@@ -241,7 +242,7 @@ class Models(object):
         for i in range(len(t)):
             e.append(ord(t[i]))
 
-    def xZVpUuXFru(t):
+    def xZVpUuXFru(self, t):
         if 8 == len(t):
             return t
         e = ""
@@ -309,7 +310,7 @@ class Models(object):
     def generateDummyProtocolField(self, params, proto):
         isCompact = False
         data = []
-        tcp = self.TCompactProtocol(self)
+        tcp = self.client.TCompactProtocol(self)
         for param in params:
             # [10, 2, revision]
             _type = param[0]
@@ -337,8 +338,8 @@ class Models(object):
 
     def generateDummyProtocolData(self, _data, ttype, isCompact=False):
         data = []
-        tbp = self.TBinaryProtocol(self)
-        tcp = self.TCompactProtocol(self)
+        tbp = self.client.TBinaryProtocol(self)
+        tcp = self.client.TCompactProtocol(self)
         proto = 4 if isCompact else 3
         if ttype == 2:
             if isCompact:
@@ -395,20 +396,20 @@ class Models(object):
         path: str,
         bdata: Union[bytes, DummyProtocolSerializer],
         ttype: int = 3,
-        encType: int = None,
-        headers: dict = None,
-        access_token: str = None,
-        baseException: dict = None,
-        readWith: str = None,
-        conn: any = None,
-        files: dict = None,
-        expectedRespCode: list = None,
-        timeout: int = None,
+        encType: Optional[int] = None,
+        headers: Optional[dict] = None,
+        access_token: Optional[str] = None,
+        baseException: Optional[dict] = None,
+        readWith: Optional[str] = None,
+        conn: Optional[Any] = None,
+        files: Optional[dict] = None,
+        expectedRespCode: Optional[list] = None,
+        timeout: Optional[int] = None,
     ):
         if expectedRespCode is None:
             expectedRespCode = [200]
         if headers is None:
-            headers = self.server.Headers.copy()
+            headers = self.client.server.Headers.copy()
         if access_token is None:
             access_token = self.authToken
         ptype = "TBINARY" if ttype == 3 else "TCOMPACT"
@@ -418,56 +419,54 @@ class Models(object):
             if isinstance(bdata, DummyProtocolSerializer):
                 # Import DummyProtocolSerializer in v2.5.3,
                 # it can be change the protocol type.
-                if self.force_tmore:
+                if self.client.force_tmore:
                     # Force TMoreCompact
-                    if path in [self.LINE_NORMAL_ENDPOINT, "/S4"]:
+                    if path in [self.client.LINE_NORMAL_ENDPOINT, "/S4"]:
                         path = "/S5"
                         ttype = 5
                 else:
                     # 2023/07/21 PATCH.
                     # on new version || CHROMEOS
                     # bin protocol will got timeout and respone None.
-                    if path == self.LINE_NORMAL_ENDPOINT:
+                    if path == self.client.LINE_NORMAL_ENDPOINT:
                         ttype = 4
                         path = "/S4"
 
                 bdata.protocol = ttype
-        headers["x-lal"] = self.LINE_LANGUAGE
+        headers["x-lal"] = self.client.LINE_LANGUAGE
         if encType is None:
-            encType = self.encType
+            encType = self.client.encType
 
         # 2022/08/24 PATCH
-        if self.DEVICE_TYPE == "CHROMEOS":
-            headers[
-                "origin"
-            ] = "chrome-extension://ophjlpahpchlmihnnnihgmmeilfjmjjc"
+        if self.client.DEVICE_TYPE == "CHROMEOS":
+            headers["origin"] = "chrome-extension://ophjlpahpchlmihnnnihgmmeilfjmjjc"
         data = bdata
         if type(data) in [DummyProtocolSerializer, list]:
             data = bdata = bytes(bdata)
         elif not isinstance(bdata, bytes):
             bdata = str(bdata).encode()
-        self.log(f"----------------- START POST", True)
-        self.log(
-            f"--> POST {path} {f'({self.LINE_ENCRYPTION_ENDPOINT})' if encType == 1 else ''}",
+        self.client.log("----------------- START POST", True)
+        self.client.log(
+            f"--> POST {path} {f'({self.client.LINE_ENCRYPTION_ENDPOINT})' if encType == 1 else ''}",
             True,
         )
-        self.log(
+        self.client.log(
             f"--> {bdata.hex()}",
             True,
         )
         if encType == 0:
             if conn is None:
-                conn = self.req_h2
+                conn = self.client.req_h2
             if "x-le" in headers:
                 del headers["x-le"]
                 del headers["x-lcs"]
             if access_token is not None:
                 headers["X-Line-Access"] = access_token
-            self.log(f"--> Headers: {headers}", True)
+            self.client.log(f"--> Headers: {headers}", True)
             res = doLoopReq(
                 conn.post,
                 {
-                    "url": self.LINE_GW_HOST_DOMAIN + path,
+                    "url": self.client.LINE_GW_HOST_DOMAIN + path,
                     "data": data,
                     "headers": headers,
                     "files": files,
@@ -477,7 +476,7 @@ class Models(object):
             data = res.content
         elif encType == 1:
             if conn is None:
-                conn = self.req
+                conn = self.client.req
             if access_token is not None:
                 _headers = {"x-lt": access_token, "x-lpqs": path}
             else:
@@ -494,11 +493,12 @@ class Models(object):
                 data = self.encData(_data)
                 data += self.XQqwlHlXKK(self.encryptKey, data)
             headers["accept-encoding"] = "gzip, deflate"
-            self.log(f"--> Headers: {headers} ({_headers})", True)
+            self.client.log(f"--> Headers: {headers} ({_headers})", True)
             res = doLoopReq(
                 conn.post,
                 {
-                    "url": self.LINE_GF_HOST_DOMAIN + self.LINE_ENCRYPTION_ENDPOINT,
+                    "url": self.client.LINE_GF_HOST_DOMAIN
+                    + self.client.LINE_ENCRYPTION_ENDPOINT,
                     "data": data,
                     "files": files,
                     "headers": headers,
@@ -513,8 +513,8 @@ class Models(object):
                 data = data[1:]
         else:
             raise Exception(f"Unknown encType: {encType}")
-        self.log(f"<--  {res.status_code}", True)
-        self.log(f"{data.hex()}", True)
+        self.client.log(f"<--  {res.status_code}", True)
+        self.client.log(f"{data.hex()}", True)
         if res.status_code in expectedRespCode:
             if (
                 res.headers.get("x-lc") is not None
@@ -526,7 +526,7 @@ class Models(object):
             else:
                 respHeaders = {}
             respHeaders.update(res.headers)
-            self.log(f"RespHraders: {respHeaders}", True)
+            self.client.log(f"RespHraders: {respHeaders}", True)
             for _rh in respHeaders:
                 _rht = str(_rh)
                 if _rht == "x-line-next-access":
@@ -546,7 +546,7 @@ class Models(object):
                         "x-obs-content-type",
                         # "x-line-next-access-max-age",
                     ]:
-                        self.log(
+                        self.client.log(
                             f"[HTTP] unhandled header:  {_rht} => {respHeaders[_rh]}"
                         )
             # x-line-access-refresh-required
@@ -555,7 +555,7 @@ class Models(object):
             if ttype == -7:
                 # COMPACT
                 # TODO: ADD DECODER
-                compact = self.TCompactProtocol(self)
+                compact = self.client.TCompactProtocol(self)
                 _type = compact.readByte(data)
                 data = data[1:]
                 if _type == 1:
@@ -582,31 +582,28 @@ class Models(object):
                 # THRIFT
                 try:
                     if ttype == 3:
-                        res = self.TBinaryProtocol(
+                        res = self.client.TBinaryProtocol(
                             self, data, baseException=baseException
                         )
                     elif ttype == 4:
-                        res = self.TCompactProtocol(
+                        res = self.client.TCompactProtocol(
                             self, data, baseException=baseException
                         )
                     elif ttype == 5:
-                        tmore = self.TMoreCompactProtocol(
+                        tmore = self.client.TMoreCompactProtocol(
                             self, data, baseException=baseException
                         )
                         res = tmore
                     else:
                         raise ValueError(f"Unknown ThriftType: {ttype}")
-                    if (
-                        self.use_thrift
-                        and getattr(res, "dummyProtocol", None) is not None
-                    ):
-                        res = self.serializeDummyProtocolToThrift(
-                            res.dummyProtocol, baseException, readWith
-                        )
-                    else:
-                        res = res.res
+
+                    # 2024/9/2: CHANGE ALL RES TO DUMMY.
+                    res = self.serializeDummyProtocolToThrift(
+                        res.dummyProtocol, baseException, readWith
+                    )
+
                 except Exception as e:
-                    _err = {
+                    _err: dict[str, Any] = {
                         "code": None,
                         "message": None,
                         "metadata": None,
@@ -617,15 +614,15 @@ class Models(object):
                         _err["message"] = e.message
                         _err["metadata"] = e.metadata
                     elif isinstance(e, TalkException):
-                        _err["code"] = e.code
-                        _err["message"] = e.reason
-                        _err["metadata"] = e.parameterMap
+                        _err["code"] = getattr(e, "code")
+                        _err["message"] = getattr(e, "reason")
+                        _err["metadata"] = getattr(e, "parameterMap")
                         _err["raw"] = e
                     else:
                         # non handler
                         raise e
                     res = {"error": _err}
-            if type(res) == dict and "error" in res:
+            if isinstance(res, dict) and "error" in res:
                 # idk why it got int on sometime
                 resMsg = str(res["error"]["message"])
                 logOutList = [
@@ -642,17 +639,17 @@ class Models(object):
                     resMsg in logOutList or resMsg.startswith("suspended")
                 ):
                     self.is_login = False
-                    self.log(f"LOGIN OUT: {resMsg}")
+                    self.client.log(f"LOGIN OUT: {resMsg}")
                 elif res["error"]["code"] == 119:
                     if self.tryRefreshToken():
                         return self.postPackDataAndGetUnpackRespData(
                             path, bdata, ttype, encType, headers
                         )
-                    self.log(f"LOGIN OUT: {resMsg}")
+                    self.client.log(f"LOGIN OUT: {resMsg}")
                 print(res)
                 raise LineServiceException(res["error"])
-            self.log(f"Result: {res}", True)
-            self.log(f"----------------- END POST", True)
+            self.client.log(f"Result: {res}", True)
+            self.client.log("----------------- END POST", True)
             return res
         elif res.status_code in [400, 401, 403]:
             self.is_login = False
@@ -662,7 +659,7 @@ class Models(object):
             f"Invalid response status code: {res.status_code}, Headers: {res.headers}"
         )
 
-    def getCurrReqId(self, whatFor: str = ''):
+    def getCurrReqId(self, whatFor: str = ""):
         self._msgSeq = 0
         unitKey = f"{whatFor}_reqseq"
         if unitKey in self.custom_data:
@@ -675,7 +672,7 @@ class Models(object):
     def getIntBytes(self, i, j=4, isCompact=False):
         i = int(i)
         if isCompact:
-            _compact = self.TCompactProtocol(self)
+            _compact = self.client.TCompactProtocol(self)
             a = _compact.makeZigZag(i, 32 if j**2 == 16 else 64)
             b = _compact.writeVarint(a)
             return b
@@ -688,12 +685,12 @@ class Models(object):
     def getStringBytes(self, text, isCompact=False):
         if text is None:
             text = ""
-        if type(text) == bytes:
+        if isinstance(text, bytes):
             pass
         else:
             text = str(text).encode()
         if isCompact:
-            _compact = self.TCompactProtocol(self)
+            _compact = self.client.TCompactProtocol(self)
             sqrd = _compact.writeVarint(len(text))
         else:
             sqrd = self.getIntBytes(len(text))
@@ -730,7 +727,7 @@ class Models(object):
     def createSqrSecret(self, base64Only=False):
         private_key = curve.generatePrivateKey(os.urandom(32))
         public_key = curve.generatePublicKey(private_key)
-        secret = urllib.parse.quote(b64encode(public_key).decode())
+        secret = quote(b64encode(public_key).decode())
         version = 1
         if base64Only:
             return [private_key, b64encode(public_key).decode()]
@@ -741,9 +738,9 @@ class Models(object):
         fn = f"{mid}.json"
         if os.path.exists(savePath + f"/{fn}"):
             return json.loads(open(savePath + f"/{fn}", "r").read())
-        keys = self.getE2EEPublicKeys()
+        keys = self.client.getE2EEPublicKeys()
         for key in keys:
-            keyId = self.checkAndGetValue(key, "keyId", 2)
+            keyId = self.client.checkAndGetValue(key, "keyId", 2)
             _keyData = self.getE2EESelfKeyDataByKeyId(keyId)
             if _keyData is not None:
                 return _keyData
@@ -773,15 +770,15 @@ class Models(object):
         open(savePath + f"/{fn2}", "w").write(data)
         return True
 
-    def registerE2EESelfKey(self, privK: bytes = None):
+    def registerE2EESelfKey(self, privK: Optional[bytes] = None):
         if privK is None:
             privK = curve.generatePrivateKey(os.urandom(32))
-        if len(privK) != 32:
+        if privK is None or len(privK) != 32:
             raise ValueError("Invalid private key.")
         pubK = curve.generatePublicKey(privK)
-        EPK = self.registerE2EEPublicKey(1, None, pubK, 0)
-        keyId = self.checkAndGetValue(EPK, "keyId", 2)
-        return self.saveE2EESelfKeyData(self.mid, pubK, privK, keyId, 1)
+        EPK = self.client.registerE2EEPublicKey(1, None, pubK, 0)
+        keyId = self.client.checkAndGetValue(EPK, "keyId", 2)
+        return self.saveE2EESelfKeyData(self.client.mid, pubK, privK, keyId, 1)
 
     def getCacheData(self, cT, cN, needHash=True, pathOnly=False):
         savePath = self.getSavePath(cT)
@@ -803,7 +800,7 @@ class Models(object):
         open(savePath + f"/{fn}", "w").write(data)
         return True
 
-    def decodeE2EEKeyV1(self, data: dict, secret: bytes, mid: str = None):
+    def decodeE2EEKeyV1(self, data: dict, secret: bytes, mid: Optional[str] = None):
         if "encryptedKeyChain" in data:
             print("Try to decode E2EE Key")
             encryptedKeyChain = base64.b64decode(data["encryptedKeyChain"])
@@ -811,7 +808,7 @@ class Models(object):
             keyId = data["keyId"]
             publicKey = base64.b64decode(data["publicKey"])
             e2eeVersion = data["e2eeVersion"]
-            e2eeKey = self.decryptKeyChain(publicKey, secret, encryptedKeyChain)
+            e2eeKey = self.client.decryptKeyChain(publicKey, secret, encryptedKeyChain)
             print(f"E2EE Priv Key: {e2eeKey[0]}")
             print(f"E2EE Pub Key: {e2eeKey[1]}")
             print(f"keyId: {keyId}")
@@ -826,7 +823,7 @@ class Models(object):
 
     def tryReadThriftContainerStruct(self, data, id=0, get_data_len=False):
         _data = {}
-        _dec = self.TCompactProtocol(self)
+        _dec = self.client.TCompactProtocol(self)
         ftype = data[0] & 15
         fid = (data[0] >> 4) + id
         offset = 1
@@ -851,9 +848,10 @@ class Models(object):
             _nextPos = 0
             for i in range(vsize):
                 if vtype == 12:
-                    _aaa, _bbb = self.tryReadThriftContainerStruct(
+                    _r: Any = self.client.tryReadThriftContainerStruct(
                         data[offset:], get_data_len=True
                     )
+                    _aaa, _bbb = _r
                     _data[fid].append(_aaa)
                     offset += _bbb + 1
         else:
@@ -861,7 +859,7 @@ class Models(object):
         if nextPos > 0:
             data = data[nextPos:]
             c = self.tryReadThriftContainerStruct(data, id=fid, get_data_len=True)
-            if c[0] is not None:
+            if _data and c[0] is not None:
                 _data.update(c[0])
             nextPos += c[1]
         if get_data_len:
@@ -869,10 +867,19 @@ class Models(object):
         return _data
 
     def serializeDummyProtocolToThrift(
-        self, data: DummyProtocol, baseException: dict = None, readWith: str = None
+        self,
+        data: DummyProtocol,
+        baseException: Optional[dict] = None,
+        readWith: Optional[str] = None,
     ):
         if baseException is None:
             baseException = {}
+
+        # 2024/9/3: 刪除 use_thrift 的判定
+        # 思路是能轉則轉, 並搭配 dummy thrift
+        # 好處是可以檢測是否有fields未定義
+        # 相對帶來性能消耗.
+        a = None
         if readWith is not None:
             new1 = self.generateDummyProtocol2(data, 4, fixSuccessHeaders=True)
             try:
@@ -885,18 +892,29 @@ class Models(object):
             if a is not None:
                 e = TMemoryBuffer(new1)
                 f = tcProtocol(e)
+                a = DummyThrift.wrap_thrift(a, not self.client.use_thrift)
                 a.read(f)
-                if getattr(a, "success", None) is not None:
-                    return a.success
-                if getattr(a, "e", None) is not None:
-                    raise a.e
-                return None
 
         def _gen():
             return DummyThrift()
 
-        def _get(a):
-            return a.data if isinstance(a, DummyProtocolData) else a
+        def check_miss(refs):
+            if isinstance(refs, DummyThrift):
+                diff = refs.dd_diff()
+                if diff:
+                    logger = self.__logger.overload("THRIFT")
+                    logger.warn(" ".join([f"'{refs.__ins_name__}'", "missing define fields:", str(diff)]))
+
+                # check fields
+                for f in refs.field_names:
+                    check_miss(getattr(refs, f))
+            elif isinstance(refs, dict):
+                for rk, rv in refs.items():
+                    check_miss(rk)
+                    check_miss(rv)
+            elif type(refs) in [list, set]:
+                for ref in refs:
+                    check_miss(ref)
 
         def _genFunc(a: DummyProtocolData, b, f):
             def __gen(a: DummyProtocolData, b):
@@ -932,29 +950,44 @@ class Models(object):
 
             c = __cek(a, f)
             setattr(b, f"val_{a.id}", c)
+            check_miss(b)
 
-        a = _gen()
+        if a is None or not isinstance(a, DummyThrift):
+            a = _gen()
 
         def b(c, refs):
-            return (
+            r = (
                 _genFunc(c, refs, b)
                 if type(c.data) in [list, dict]
                 else setattr(refs, f"val_{c.id}", c.data)
             )
+            return r
 
         if data.data is not None:
             b(data.data, a)
-        if self.checkAndGetValue(a, "val_0") is not None:
+            check_miss(a)
+        
+        # 2024/9/3: 改為遍歷方式去判斷
+        # 非 None 直接返回
+        # 若為 Exception 則直接使用 raise
+        for field_name in a.field_names:
+            field = getattr(a, field_name)
+            if field is not None:
+                if isinstance(field, Exception):
+                    raise field
+                return field
+
+        if self.client.checkAndGetValue(a, "val_0") is not None:
             return a.val_0
         _ecode = baseException.get("code", 1)
         _emsg = baseException.get("message", 2)
         _emeta = baseException.get("metadata", 3)
-        if self.checkAndGetValue(a, "val_1") is not None:
+        if self.client.checkAndGetValue(a, "val_1") is not None:
             raise LineServiceException(
                 {},
-                self.checkAndGetValue(a.val_1, f"val_{_ecode}"),
-                self.checkAndGetValue(a.val_1, f"val_{_emsg}"),
-                self.checkAndGetValue(a.val_1, f"val_{_emeta}"),
+                self.client.checkAndGetValue(a.val_1, f"val_{_ecode}"),
+                self.client.checkAndGetValue(a.val_1, f"val_{_emsg}"),
+                self.client.checkAndGetValue(a.val_1, f"val_{_emeta}"),
                 a.val_1,
             )
         # no vals
@@ -995,7 +1028,8 @@ def doLoopReq(
 ):
     currCount += 1
     doRetry = False
-    e = None
+    e: Any = None
+    res = None
     try:
         res = req(**data)
     except httpx.ConnectTimeout as ex:
@@ -1022,4 +1056,6 @@ def doLoopReq(
             raise e
         time.sleep(retryTimeDelay)
         return doLoopReq(req, data, currCount, maxRetryCount, retryTimeDelay)
+    if res is None:
+        raise EOFError
     return res

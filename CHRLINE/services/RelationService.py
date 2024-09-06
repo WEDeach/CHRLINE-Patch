@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, List, Optional
 from .BaseService import BaseService, BaseServiceStruct
 
 if TYPE_CHECKING:
-    from CHRLINE import CHRLINE
+    from ..client import CHRLINE
 
 
 class RelationService(BaseService):
@@ -112,7 +112,10 @@ class RelationService(BaseService):
         )
 
     def getContactsV3(
-        self, targetUserMids: List[str], syncReason: int, checkUserStatusStrictly: bool
+        self,
+        targetUserMids: List[str],
+        syncReason: int = 5,
+        checkUserStatusStrictly: bool = False,
     ):
         """Get contacts v3."""
         METHOD_NAME = "getContactsV3"

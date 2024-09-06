@@ -1,7 +1,9 @@
 ﻿# -*- coding: utf-8 -*-
-import httpx
-from typing import List, Optional
 from random import randint
+from typing import TYPE_CHECKING, List, Optional
+
+import httpx
+
 from .BaseService import BaseService, BaseServiceHandler, BaseServiceStruct
 
 try:
@@ -9,6 +11,8 @@ try:
     from .thrift.ttypes import TalkException
 except:
     pass
+if TYPE_CHECKING:
+    from ..client import CHRLINE
 
 
 class TalkService(BaseService):
@@ -26,10 +30,10 @@ class TalkService(BaseService):
         to: str,
         text: str,
         contentType: int = 0,
-        contentMetadata: dict = None,
-        relatedMessageId: str = None,
-        location: dict = None,
-        chunk: list = None,
+        contentMetadata: Optional[dict] = None,
+        relatedMessageId: Optional[str] = None,
+        location: Optional[dict] = None,
+        chunk: Optional[list] = None,
         squareChatMid: Optional[str] = None,
     ):
         if contentMetadata is None:
@@ -796,7 +800,7 @@ class TalkService(BaseService):
         if type(mid) == list:
             _lastReq = None
             for _mid in mid:
-                print(f"[deleteOtherFromChat] The parameter 'mid' should be str")
+                print("[deleteOtherFromChat] The parameter 'mid' should be str")
                 _lastReq = self.deleteOtherFromChat(to, _mid)
             return _lastReq
         sqrd = [
@@ -2137,7 +2141,7 @@ class TalkService(BaseService):
             self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
         )
 
-    def registerE2EEPublicKey(self, version: int, keyId: int, keyData: str, time: int):
+    def registerE2EEPublicKey(self, version: int, keyId: Optional[int], keyData: str, time: int):
         METHOD_NAME = "registerE2EEPublicKey"
         params = [
             [
@@ -6625,6 +6629,11 @@ class TalkServiceStruct(BaseServiceStruct):
 
 
 class TalkServiceHandler(BaseServiceHandler):
+    def __init__(self, client: "CHRLINE") -> None:
+        super().__init__(client)
+
+        self.logger = self._logger.overload("TALK")
+
     def SyncHandler(self, res: any):
         """
         Sync handler.
@@ -6637,11 +6646,12 @@ class TalkServiceHandler(BaseServiceHandler):
         if res is None:
             return 1, []
         cl = self.cl
+        ll = self.logger.overload("Sync")
         isDebugOnly = True
         operationResponse = cl.checkAndGetValue(res, "operationResponse", 1)
         fullSyncResponse = cl.checkAndGetValue(res, "fullSyncResponse", 2)
         partialFullSyncResponse = cl.checkAndGetValue(res, "partialFullSyncResponse", 2)
-        cl.log(f"[SyncHandler] Resp: {res}", isDebugOnly)
+        ll.debug(f"Resp: {res}")
         if operationResponse is not None:
             ops = cl.checkAndGetValue(operationResponse, "operations", 1)
             hasMoreOps = cl.checkAndGetValue(operationResponse, "hasMoreOps", 2)
@@ -6653,24 +6663,22 @@ class TalkServiceHandler(BaseServiceHandler):
                 events = cl.checkAndGetValue(globalEvents, "events", 1)
                 lastRevision = cl.checkAndGetValue(globalEvents, "lastRevision", 2)
                 cl.globalRev = lastRevision
-                cl.log(f"[SyncHandler] new globalRev: {cl.globalRev}", isDebugOnly)
-                cl.log(f"[SyncHandler] globalEvents: {events}", isDebugOnly)
+                ll.info(f"new globalRev: {cl.globalRev}")
+                ll.debug(f"globalEvents: {events}")
 
             if individualEvents is not None:
                 events = cl.checkAndGetValue(individualEvents, "events", 1)
                 lastRevision = cl.checkAndGetValue(individualEvents, "lastRevision", 2)
                 cl.individualRev = lastRevision
-                cl.log(
-                    f"[SyncHandler] new individualRev: {cl.individualRev}", isDebugOnly
-                )
-                cl.log(f"[SyncHandler] individualEvents: {events}", isDebugOnly)
-            cl.log(f"[SyncHandler] operations: {ops}", isDebugOnly)
+                ll.info(f"new individualRev: {cl.individualRev}")
+                ll.debug(f"individualEvents: {events}")
+            ll.debug(f"operations: {ops}")
             return 1, ops
         elif fullSyncResponse is not None:
             # revision - 1 for sync revision on next req
             reasons = cl.checkAndGetValue(fullSyncResponse, "reasons", 1)
             syncRevision = cl.checkAndGetValue(fullSyncResponse, "nextRevision", 2)
-            cl.log(f"[SyncHandler] got fullSyncResponse: {reasons}")
+            ll.info(f"got fullSyncResponse: {reasons}")
             return 2, syncRevision - 1
         else:
             raise EOFError(f"[SyncHandler] sync failed, unknown response: {res}")

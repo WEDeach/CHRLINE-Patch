@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 import json
 import time
-import qrcode
 from typing import List, Optional
+
+import qrcode
+from qrcode.constants import ERROR_CORRECT_L
 
 from .base import BaseHelper
 
@@ -12,26 +14,30 @@ class TalkHelper(BaseHelper):
         pass
 
     def getProfileCoverObjIdAndUrl(self, mid: str):
-        video_obj = None
+        url = None
+        pic_oid = None
+        video_oid = None
         video_url = None
         detail = self.client.getProfileCoverDetail(mid)["result"]
-        coverObsInfo = self.checkAndGetValue(
+        coverObsInfo = self.client.checkAndGetValue(
             detail, "coverObsInfo"
         )  # detail['coverObsInfo']
-        videoCoverObsInfo = self.checkAndGetValue(
+        videoCoverObsInfo = self.client.checkAndGetValue(
             detail, "videoCoverObsInfo"
         )  # detail['videoCoverObsInfo']
-        url = (
-            self.client.LINE_OBS_DOMAIN
-            + f'/r/{coverObsInfo["serviceName"]}/{coverObsInfo["obsNamespace"]}/{coverObsInfo["objectId"]}'
-        )
+        if coverObsInfo is not None:
+            pic_oid = coverObsInfo["objectId"]
+            url = (
+                self.client.LINE_OBS_DOMAIN
+                + f'/r/{coverObsInfo["serviceName"]}/{coverObsInfo["obsNamespace"]}/{pic_oid}'
+            )
         if videoCoverObsInfo is not None:
-            video_obj = videoCoverObsInfo["objectId"]
+            video_oid = videoCoverObsInfo["objectId"]
             video_url = (
                 self.client.LINE_OBS_DOMAIN
                 + f'/r/{videoCoverObsInfo["serviceName"]}/{videoCoverObsInfo["obsNamespace"]}/{videoCoverObsInfo["objectId"]}'
             )
-        return url, video_url, coverObsInfo["objectId"], video_obj
+        return url, video_url, pic_oid, video_oid
 
     def getProfilePictureObjIdAndUrl(self, mid: str):
         url = None
@@ -40,7 +46,7 @@ class TalkHelper(BaseHelper):
         objectId_video = None
         serviceName = "talk"
         obsNamespace = None
-        midType = self.getToType(mid)
+        midType = self.client.getToType(mid)
         if midType == 0:
             obsNamespace = "p"
             objectId_video = f"{mid}/vp"
@@ -78,7 +84,7 @@ class TalkHelper(BaseHelper):
         savePath = savePath + f"/qr_{filename}.png"
         qr = qrcode.QRCode(
             version=1,
-            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            error_correction=ERROR_CORRECT_L,
         )
         qr.add_data(url)
         qr.make()
@@ -89,15 +95,16 @@ class TalkHelper(BaseHelper):
             )
 
         # 如果你問我問啥要加這段, 我可以告訴你fk u line >:( 你可以看到qr外面有一圈, 這是讓line讀到的必要條件(啊明明就可以不用 line的判定有夠爛)
-        fixed_bored = [False for _b in range(len(qr.modules[0]))]
-        for qr_module in [fixed_bored] + qr.modules + [fixed_bored]:
-            win_qr_make(qr_module, output_char)
+        if qr.modules:
+            fixed_bored = [False for _b in range(len(qr.modules[0]))]
+            for qr_module in [fixed_bored] + qr.modules + [fixed_bored]:
+                win_qr_make(qr_module, output_char)
         img = qr.make_image()
         img.save(savePath)
         return savePath
 
     def sendMention(self, to, text="", mids=[], prefix=True):
-        if type(mids) != list:
+        if not isinstance(mids, list):
             mids = [mids]
         tag = "@chrline"
         str_tag = "@!"
@@ -139,7 +146,7 @@ class TalkHelper(BaseHelper):
 
     def getMentioneesByMsgData(self, msg: dict):
         a = []
-        b = self.checkAndGetValue(msg, "contentMetadata", 18)
+        b = self.client.checkAndGetValue(msg, "contentMetadata", 18)
         if b is not None:
             if "MENTION" in b:
                 c = json.loads(b["MENTION"])

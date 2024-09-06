@@ -30,6 +30,7 @@ class BaseServiceStruct:
 class BaseServiceHandler:
     def __init__(self, client: "CHRLINE") -> None:
         self.cl = client
+        self._logger = self.cl.get_logger("HANDER")
 
 class BaseServiceSender(BaseServiceHandler):
     def __init__(self, client: Any, name: str, req_type: int, res_type: int, endpoint: str) -> None:

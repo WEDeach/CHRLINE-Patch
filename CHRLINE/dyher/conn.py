@@ -1,9 +1,11 @@
-import time
 import socket
 import ssl
 import struct
-from h2.config import H2Configuration
+import time
+
 import h2.connection
+from h2.config import H2Configuration
+from h2.events import DataReceived, StreamEnded, StreamReset
 
 from .connData import (
     LegyH2PingFrame,
@@ -12,7 +14,6 @@ from .connData import (
     LegyH2PushFrameType,
     LegyH2SignOnResponseFrame,
 )
-
 from .connManager import ConnManager
 
 
@@ -84,22 +85,22 @@ class Conn(object):
                         break
                     events = self.conn.receive_data(data)
                     for event in events:
-                        if isinstance(event, h2.events.DataReceived):
+                        if isinstance(event, DataReceived):
                             # update flow control so the server doesn't starve us
                             self.conn.acknowledge_received_data(
                                 event.flow_controlled_length, event.stream_id
                             )
 
                             _data = event.data
-                            if len(_data) < 4:
+                            if _data is not None and len(_data) < 4:
                                 self.client.log(f"[CONN] Invalid Packet: {_data.hex()}")
                                 continue
                             self.onDataReceived(_data)
-                        elif isinstance(event, h2.events.StreamEnded):
+                        elif isinstance(event, StreamEnded):
                             # response body completed, let's exit the loop
                             response_stream_ended = True
                             break
-                        elif isinstance(event, h2.events.StreamReset):
+                        elif isinstance(event, StreamReset):
                             raise RuntimeError("Stream reset: %d" % event.error_code)
                     # send any pending data to the server
                     self.send()
@@ -167,10 +168,10 @@ class Conn(object):
             else:
                 raise NotImplementedError(f"ping type not Implemented: {_pingType}")
         elif _dt == 3:
-            (I,) = struct.unpack("!H", _dd[0:2])
-            _requestId = I & 32767
+            (req,) = struct.unpack("!H", _dd[0:2])
+            _requestId = req & 32767
             # Android using 32768, CHRLINE use (32768 / 2)
-            _isFin = (I & 32768) != 0
+            _isFin = (req & 32768) != 0
             _responsePayload = _dd[2:]
             packet = LegyH2SignOnResponseFrame(_requestId, _isFin, _responsePayload)
             if packet.is_fin:
@@ -182,7 +183,7 @@ class Conn(object):
                 self.manager.OnSignOnResponse(_requestId, _isFin, _responsePayload)
             else:
                 self.client.log(
-                    f"[PUSH] receives long data. requestId: {_requestId}, I={I}",
+                    f"[PUSH] receives long data. requestId: {_requestId}, req={req}",
                     debug_only,
                 )
                 if packet.request_id not in self.notFinPayloads:
@@ -203,7 +204,6 @@ class Conn(object):
             ]:
                 if packet.push_type == LegyH2PushFrameType.ACK_REQUIRED:
                     # SEND ACK FOR PUSHES
-                    _PushAck = packet.ack_packet()
                     self.writeByte(packet.ack_packet())
                     self.client.log(
                         f"[PUSH] send push ack. service:{_serviceType}", debug_only

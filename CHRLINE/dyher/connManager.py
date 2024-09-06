@@ -1,11 +1,11 @@
-import time
-import threading
 import struct
-
-from .connData import LegyH2PushFrame, LegyPushOABot, LegyPushOABotTyping
+import threading
+import time
+from typing import Any
 
 from ..client import CHRLINE
 from ..services import *
+from .connData import LegyH2PushFrame, LegyPushOABot, LegyPushOABotTyping
 
 
 def gen_m(ss=[1, 3, 5, 6, 8, 9, 10]):
@@ -100,7 +100,7 @@ class ConnManager(object):
                 }
                 self.log(f"request talk fetcher: {ex_val}")
             self.buildAndSendSignOnRequest(_conn, service, **ex_val)
-        self.log(f"CONN start read push.")
+        self.log("CONN start read push.")
         _conn.read()
         self.logger.warning(f"CONN died on PingId={self.curr_ping_id}")
         self.conns.remove(_conn)
@@ -111,7 +111,7 @@ class ConnManager(object):
         """Test send request and read response."""
         if not self.conns:
             raise ValueError("No valid connections found.")
-        # _conn = self.conns[0]
+        _conn = None
         conns = []
         for c in self.conns[1:]:
             if c.IsAble2Request():
@@ -130,6 +130,8 @@ class ConnManager(object):
                 if not c._closed:
                     _conn = c
                     break
+        if _conn is None:
+            raise NotImplementedError
         _, reqId = self.buildAndSendSignOnRequest(_conn, serviceType, **kwargs)
         if waitAndReadResp:
             raise NotImplementedError()
@@ -144,7 +146,7 @@ class ConnManager(object):
         """Build request struct."""
         return struct.pack("!H", len(data)) + bytes([service]) + data
 
-    def buildAndSendSignOnRequest(self, conn: any, serviceType: int, **kwargs):
+    def buildAndSendSignOnRequest(self, conn: Any, serviceType: int, **kwargs):
         """
         Build and send sign-on-request.
 
@@ -262,7 +264,7 @@ class ConnManager(object):
             if serviceType == 3:
                 data = cl.TCompactProtocol(cl, data)
                 resp = data.res
-                if "error" in resp:
+                if resp and "error" in resp:
                     self.log(f"can't use PUSH for OpenChat:{resp['error']}")
                     return False
                 subscription = cl.checkAndGetValue(resp, "subscription", 1)
@@ -287,10 +289,9 @@ class ConnManager(object):
                     resp = data.res
                     if methodName == "sync":
                         serviceName = "SyncService"
-                    if cl.use_thrift:
-                        resp = cl.serializeDummyProtocolToThrift(
-                            data.dummyProtocol, readWith=f"{serviceName}.{methodName}"
-                        )
+                    resp = cl.serializeDummyProtocolToThrift(
+                        data.dummyProtocol, readWith=f"{serviceName}.{methodName}"
+                    )
                     if methodName == "sync":
                         ops = resp
                         sht, shd = cl.talk_handler.SyncHandler(resp)
@@ -409,6 +410,6 @@ class ConnManager(object):
             oldToken = self.accessToken
             newToken = self.line_client.authToken
             if oldToken != newToken:
-                self.log(f"renew push conn for new authToken...")
+                self.log("renew push conn for new authToken...")
                 self.accessToken = newToken
                 self.conns[0].close()

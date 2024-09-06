@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 import json
 import re
-import requests
 from urllib.parse import urlparse
 
-from .base import BaseHelper
+import requests
+
 from ..exceptions import LineServiceException
+from .base import BaseHelper
 
 
 class LiffHelper(BaseHelper):
@@ -115,7 +116,7 @@ class LiffHelper(BaseHelper):
         session = requests.session()
         hr = {
             "X-Line-Access": self.client.authToken,
-            "User-Agent": f"Mozilla/5.0 (Linux; Android 8.0.1; SAMSUNG Realise/DeachSword; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/56.0.2924.87 Mobile Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (Linux; Android 8.0.1; SAMSUNG Realise/DeachSword; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/56.0.2924.87 Mobile Safari/537.36",
             "X-Line-Application": self.client.APP_NAME,
         }
         if self.client.APP_TYPE == "IOS":

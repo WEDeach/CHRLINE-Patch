@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import re
+from typing import Optional
 
 
 class Config(object):
@@ -27,7 +28,7 @@ class Config(object):
     LINE_STATIC_CDN_DOMAIN = "https://static.line-scdn.net"
     LINE_VOS_CDN_DOMAIN = "https://vos.line-scdn.net"
     LINE_SHOPPING_CDN_DOMAIN = "https://shopping.line-scdn.net"
-    
+
     LINE_LAN_DOMAIN = "https://lan.line.me"
 
     LINE_LEGY_BETA_DOMAIN = "https://legy-beta.line-apps-beta.com"
@@ -217,11 +218,18 @@ class Config(object):
         elif type == "INTERNAL":
             pass
         else:
-            raise Exception(f"未知的Device , 請至 config.py 新增")
+            raise Exception("未知的Device , 請至 config.py 新增")
         self.APP_TYPE = type
         self.USER_AGENT = "Line/%s" % self.APP_VER
 
-    def initAppConfig(self, app_type: str, app_version: str, os_name: str, os_version: str, os_model: str):
+    def initAppConfig(
+        self,
+        app_type: Optional[str],
+        app_version: Optional[str],
+        os_name: Optional[str],
+        os_version: Optional[str],
+        os_model: Optional[str],
+    ):
         """Init app config."""
         self.APP_TYPE = "CHROMEOS"
         if app_type is not None:
@@ -242,7 +250,7 @@ class Config(object):
         )
         if self.isSecondary:
             self.APP_NAME += ";SECONDARY"
-    
+
     @property
     def LineUserAgent(self):
         if self.APP_TYPE == "CHROMEOS":
@@ -251,7 +259,11 @@ class Config(object):
             _desktop = "MAC"
             if self.APP_TYPE == "DESKTOPWIN":
                 _desktop = "WINDOWS"
-            self.USER_AGENT = f"DESKTOP:{_desktop}:{self.SYSTEM_NAME}({self.SYSTEM_VER})"
+            self.USER_AGENT = (
+                f"DESKTOP:{_desktop}:{self.SYSTEM_NAME}({self.SYSTEM_VER})"
+            )
         else:
-            self.USER_AGENT = f"Line/{self.APP_VER} {self.SYSTEM_MODEL} {self.SYSTEM_VER}"
+            self.USER_AGENT = (
+                f"Line/{self.APP_VER} {self.SYSTEM_MODEL} {self.SYSTEM_VER}"
+            )
         return self.USER_AGENT

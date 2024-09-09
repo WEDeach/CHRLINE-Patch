@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import gevent.monkey
 
@@ -109,7 +109,7 @@ class CHRLINE(
             customDataId = "CHRLINE_CUSTOM_0"
         self.customDataId = customDataId
         self.can_use_square = False
-        self.squares: dict = {}
+        self.squares: Any = None
         ChrHelper.__init__(self, cl=self)
         self.logger = self.get_logger()
         if self.isDebug:
@@ -157,22 +157,31 @@ class CHRLINE(
         __profile_err = self.checkAndGetValue(self.profile, "error")
         if __profile_err is not None:
             self.log(f"登入失敗... {__profile_err}")
+            b = None
             try:
                 for b in self.requestSQR(False):
                     print(b)
-            except:
+            except Exception as _:
                 raise Exception(f"登入失敗... {__profile_err}")
-            self.handleNextToken(b)
+            if b is not None:
+                self.handleNextToken(b)
             return self.initAll()
-        self.mid = self.checkAndGetValue(self.profile, "mid", 1)
-        assert self.mid is not None
+        mid = self.checkAndGetValue(self.profile, "mid", 1)
+        if not isinstance(mid, str):
+            raise TypeError(
+                "`mid` expected type `str`, but got type `%s`: %r"
+                % (type(self.mid), self.mid)
+            )
+        self.mid = mid
         __displayName = self.checkAndGetValue(self.profile, "displayName", 20)
-        self.log(f"[{__displayName}] 登入成功 ({self.mid}) / {self.DEVICE_TYPE}")
+        self.logger.info(
+            f"[{__displayName}] 登入成功 ({self.mid}) / {self.DEVICE_TYPE}"
+        )
         if self.customDataId is None:
             self.customDataId = self.mid
         try:
             system(f"title CHRLINE - {__displayName}")
-        except:
+        except Exception as _:
             pass
         self.revision = -1
         try:
@@ -193,13 +202,12 @@ class CHRLINE(
         self.is_login = True
 
         self.can_use_square = False
-        self.squares = None
         try:
             _squares = self.getJoinedSquares()
             self.can_use_square = True
             self.squares = _squares
         except SquareException as e:
-            self.log(f"Not support Square: {e.reason}")
+            self.log(f"Not support Square: {getattr(e, 'reason')}")
         except LineServiceException as e:
             self.log(f"Not support Square: {e.message}")
 

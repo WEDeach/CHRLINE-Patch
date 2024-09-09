@@ -91,9 +91,9 @@ class E2EE(ChrHelperProtocol):
                 encryptedSharedKey = self.client.checkAndGetValue(
                     E2EEGroupSharedKey, "encryptedSharedKey", 7
                 )
-                if encryptedSharedKey is None:
+                if not isinstance(encryptedSharedKey, bytes):
                     raise ValueError(
-                        f"encryptedSharedKey should not be None. (E2EEGroupSharedKey: {E2EEGroupSharedKey})"
+                        f"encryptedSharedKey should be bytes. (E2EEGroupSharedKey: {E2EEGroupSharedKey})"
                     )
                 selfKeyData = self.client.getE2EESelfKeyDataByKeyId(receiverKeyId)
                 if selfKeyData is None:
@@ -125,6 +125,10 @@ class E2EE(ChrHelperProtocol):
 
     def tryRegisterE2EEGroupKey(self, group_mid: str):
         E2EEPublicKeys = self.client.getLastE2EEPublicKeys(group_mid)
+        if not isinstance(E2EEPublicKeys, dict):
+            raise ValueError(
+                f"E2EEPublicKeys should be list. (E2EEPublicKeys: {E2EEPublicKeys})"
+            )
         members = []
         keyIds = []
         encryptedSharedKeys = []

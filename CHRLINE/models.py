@@ -394,7 +394,7 @@ class Models(ChrHelperProtocol):
     def postPackDataAndGetUnpackRespData(
         self,
         path: str,
-        bdata: Union[bytes, DummyProtocolSerializer],
+        bdata: Union[bytes, DummyProtocolSerializer, list],
         ttype: int = 3,
         encType: Optional[int] = None,
         headers: Optional[dict] = None,
@@ -733,17 +733,23 @@ class Models(ChrHelperProtocol):
             return [private_key, b64encode(public_key).decode()]
         return [private_key, f"?secret={secret}&e2eeVersion={version}"]
 
-    def getE2EESelfKeyData(self, mid):
+    def getE2EESelfKeyData(self, mid: str):
         savePath = self.getSavePath(".e2eeKeys")
         fn = f"{mid}.json"
         if os.path.exists(savePath + f"/{fn}"):
             return json.loads(open(savePath + f"/{fn}", "r").read())
         keys = self.client.getE2EEPublicKeys()
-        for key in keys:
-            keyId = self.client.checkAndGetValue(key, "keyId", 2)
-            _keyData = self.getE2EESelfKeyDataByKeyId(keyId)
-            if _keyData is not None:
-                return _keyData
+        if isinstance(keys, list):
+            for key in keys:
+                keyId = self.client.checkAndGetValue(key, "keyId", 2)
+                _keyData = self.getE2EESelfKeyDataByKeyId(keyId)
+                if _keyData is not None:
+                    return _keyData
+        else:
+            raise TypeError(
+                "`getE2EEPublicKeys` expected type `list`, but got type `%s`: %r"
+                % (type(keys), keys)
+            )
         raise Exception("E2EE Key has not been saved, try register or use SQR Login")
 
     def getE2EESelfKeyDataByKeyId(self, keyId):
@@ -903,7 +909,15 @@ class Models(ChrHelperProtocol):
                 diff = refs.dd_diff()
                 if diff:
                     logger = self.__logger.overload("THRIFT")
-                    logger.warn(" ".join([f"'{refs.__ins_name__}'", "missing define fields:", str(diff)]))
+                    logger.warn(
+                        " ".join(
+                            [
+                                f"'{refs.__ins_name__}'",
+                                "missing define fields:",
+                                str(diff),
+                            ]
+                        )
+                    )
 
                 # check fields
                 for f in refs.field_names:
@@ -966,7 +980,7 @@ class Models(ChrHelperProtocol):
         if data.data is not None:
             b(data.data, a)
             check_miss(a)
-        
+
         # 2024/9/3: 改為遍歷方式去判斷
         # 非 None 直接返回
         # 若為 Exception 則直接使用 raise

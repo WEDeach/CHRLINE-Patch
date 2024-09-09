@@ -7,19 +7,26 @@ Version: 1.0.6
 
 from typing import TYPE_CHECKING, List, Optional
 
-from .BaseService import BaseService, BaseServiceStruct
+from ..helper import ChrHelperProtocol
+from .BaseService import BaseServiceSender
 
 if TYPE_CHECKING:
-    from ..client import CHRLINE
+    pass
 
 
-class RelationService(BaseService):
-    RelationService_REQ_TYPE = 4  # BASE_VAL
-    RelationService_RES_TYPE = 4  # BASE_VAL
-    RelationService_API_PATH = None  # BASE_VAL
+class RelationService(ChrHelperProtocol):
+    __REQ_TYPE = 4
+    __RES_TYPE = 4
+    __ENDPOINT = "/RE4"
 
     def __init__(self):
-        self.RelationService_API_PATH = "/RE4"
+        self.__sender = BaseServiceSender(
+            self.client,
+            "RelationService",
+            self.__REQ_TYPE,
+            self.__RES_TYPE,
+            self.__ENDPOINT,
+        )
 
     def getTargetProfiles(self, mids: List[str]):
         """
@@ -34,12 +41,7 @@ class RelationService(BaseService):
             targets.append([[11, 1, mid]])
         request = [[15, 1, [12, targets]]]
         params = [[12, 1, request]]
-        sqrd = self.generateDummyProtocol(
-            METHOD_NAME, params, self.RelationService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.RelationService_API_PATH, sqrd, self.RelationService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getUserStatuses(self):
         """
@@ -51,12 +53,8 @@ class RelationService(BaseService):
         raise Exception("getUserStatuses is not implemented")
         METHOD_NAME = "getUserStatuses"
         params = []
-        sqrd = self.generateDummyProtocol(
-            METHOD_NAME, params, self.RelationService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.RelationService_API_PATH, sqrd, self.RelationService_RES_TYPE
-        )
+        params = [[12, 1, params]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def getRecommendationDetails(self):
         """
@@ -68,12 +66,8 @@ class RelationService(BaseService):
         raise Exception("getRecommendationDetails is not implemented")
         METHOD_NAME = "getRecommendationDetails"
         params = []
-        sqrd = self.generateDummyProtocol(
-            METHOD_NAME, params, self.RelationService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.RelationService_API_PATH, sqrd, self.RelationService_RES_TYPE
-        )
+        params = [[12, 1, params]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def getContactCalendarEvents(
         self,
@@ -92,7 +86,8 @@ class RelationService(BaseService):
             [8, 2, syncReason],
             [14, 3, [8, requiredContactCalendarEvents]],
         ]
-        return RelationServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        params = [[12, 1, params]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def getBlockDetails(self):
         """
@@ -104,12 +99,8 @@ class RelationService(BaseService):
         raise Exception("getBlockDetails is not implemented")
         METHOD_NAME = "getBlockDetails"
         params = []
-        sqrd = self.generateDummyProtocol(
-            METHOD_NAME, params, self.RelationService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.RelationService_API_PATH, sqrd, self.RelationService_RES_TYPE
-        )
+        params = [[12, 1, params]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def getContactsV3(
         self,
@@ -128,7 +119,8 @@ class RelationService(BaseService):
             [8, 2, syncReason],
             [2, 3, checkUserStatusStrictly],
         ]
-        return RelationServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        params = [[12, 1, params]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def getFriendDetails(self):
         """
@@ -140,12 +132,8 @@ class RelationService(BaseService):
         raise Exception("getFriendDetails is not implemented")
         METHOD_NAME = "getFriendDetails"
         params = []
-        sqrd = self.generateDummyProtocol(
-            METHOD_NAME, params, self.RelationService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.RelationService_API_PATH, sqrd, self.RelationService_RES_TYPE
-        )
+        params = [[12, 1, params]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def addFriendByMid(
         self,
@@ -159,20 +147,10 @@ class RelationService(BaseService):
         addMeta = [[11, 1, trackingMetaHint]]
         trackingMeta = [[12, trackingMetaType, addMeta]]
         tracking = [[11, 1, reference], [12, 2, trackingMeta]]
-        params = [[8, 1, self.getCurrReqId()], [11, 2, userMid], [12, 3, tracking]]
-        return RelationServiceStruct.SendRequestByName(self, METHOD_NAME, params)
-
-
-class RelationServiceStruct(BaseServiceStruct):
-    @staticmethod
-    def SendRequestByName(client: "CHRLINE", name: str, request: list):
-        payload = __class__.BaseRequest(request)
-        sqrd = client.generateDummyProtocol(
-            name, payload, client.RelationService_REQ_TYPE
-        )
-        return client.postPackDataAndGetUnpackRespData(
-            client.RelationService_API_PATH,
-            sqrd,
-            client.RelationService_RES_TYPE,
-            readWith=f"RelationService.{name}",
-        )
+        params = [
+            [8, 1, self.client.getCurrReqId()],
+            [11, 2, userMid],
+            [12, 3, tracking],
+        ]
+        params = [[12, 1, params]]
+        return self.__sender.send(METHOD_NAME, params)

@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
-from .BaseService import BaseService, BaseServiceStruct, BaseServiceSender
+from ..helper import ChrHelperProtocol
+from .BaseService import BaseServiceSender, BaseServiceStruct
 
 
-class PremiumFontService(BaseService):
+class PremiumFontService(ChrHelperProtocol):
     __REQ_TYPE = 4
     __RES_TYPE = 4
     __ENDPOINT = "/EXT/talk/asset-meta-server/thrift/fontService"
 
     def __init__(self):
         self.__sender = BaseServiceSender(
-            self,
+            self.client,
             "PremiumFontService",
             self.__REQ_TYPE,
             self.__RES_TYPE,

@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
-from .BaseService import BaseService, BaseServiceStruct, BaseServiceSender
+from ..helper import ChrHelperProtocol
+from .BaseService import BaseServiceSender, BaseServiceStruct
 
 
-class ShopCollectionService(BaseService):
+class ShopCollectionService(ChrHelperProtocol):
     __REQ_TYPE = 4
     __RES_TYPE = 4
     __ENDPOINT = "/ext/sapi/sapic"
 
     def __init__(self):
         self.__sender = BaseServiceSender(
-            self,
+            self.client,
             "ShopCollectionService",
             self.__REQ_TYPE,
             self.__RES_TYPE,
@@ -57,7 +58,7 @@ class ShopCollectionService(BaseService):
             [11, 1, collectionId],
             [8, 2, productType],
             [11, 3, productId],
-            [11, 4, itemId]
+            [11, 4, itemId],
         ]
         params = BaseServiceStruct.BaseRequest(params)
         return self.__sender.send(METHOD_NAME, params)
@@ -70,11 +71,7 @@ class ShopCollectionService(BaseService):
     ):
         """Remove item from collection."""
         METHOD_NAME = "removeItemFromCollection"
-        params = [
-            [11, 1, collectionId],
-            [11, 3, productId],
-            [11, 4, itemId]
-        ]
+        params = [[11, 1, collectionId], [11, 3, productId], [11, 4, itemId]]
         params = BaseServiceStruct.BaseRequest(params)
         return self.__sender.send(METHOD_NAME, params)
 

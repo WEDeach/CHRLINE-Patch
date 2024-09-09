@@ -277,6 +277,23 @@ class SquareLiveTalkService(BaseService):
         params = [[14, 1, [8, updatedAttrs]], [12, 2, liveTalk]]
         return SquareLiveTalkServiceStruct.SendRequestByName(self, METHOD_NAME, params)
 
+    def acquireLiveTalk(
+        self,
+        squareChatMid: str,
+        title: str,
+        _type: int = 1,
+        speakerSetting: int = 2,
+    ):
+        """Acquire live talk."""
+        METHOD_NAME = "acquireLiveTalk"
+        params = [
+            [11, 1, squareChatMid],
+            [11, 2, title],
+            [8, 3, _type],
+            [8, 4, speakerSetting],
+        ]
+        return SquareLiveTalkServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+
 
 class SquareLiveTalkServiceStruct(BaseServiceStruct):
     @staticmethod

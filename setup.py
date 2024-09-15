@@ -28,6 +28,7 @@ setuptools.setup(
     'h2>=3.2.0',
     'gevent',
     'cryptography',
+    # 'cryptography>=42.0.0',
     'thrift',
     'qrcode',
     'Image',

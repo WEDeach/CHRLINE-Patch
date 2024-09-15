@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import json
 import time
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import qrcode
 from qrcode.constants import ERROR_CORRECT_L
@@ -156,7 +156,7 @@ class TalkHelper(BaseHelper):
                     a.append(_m["M"])
         return a
 
-    def genMentionData(self, mentions: dict):
+    def genMentionData(self, mentions: List[Dict[str, Any]]):
         """
         - mentions:
             - S: index

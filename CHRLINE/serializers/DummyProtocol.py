@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 
 class DummyProtocolData:
@@ -57,6 +57,9 @@ class DummyThrift:
                 if fid == index:
                     return getattr(self, fname)
         return getattr(self, f"val_{index}")
+    
+    def __setitem__(self, key, value):
+        return self.__setattr__(key, value)
 
     @property
     def thrift_ins(self):
@@ -249,27 +252,59 @@ class DummyThrift:
                         return r2.thrift_ins
                     return r2
         return None
-
+        
     def __setattr__(self, k, v):
-        if k.startswith("val_"):
-            k2 = k.split("val_")[1]
+        k2: Union[int, None] = None
+        if isinstance(k, str) and k.startswith("val_"):
+            k2 = int(k.split("val_")[1])
+        if isinstance(k, int):
+            # conv int to field id.
+            k2 = k
+            k = f"val_{k}"
+        if k2 is not None:
+            # patch int to thrift field
             r2 = self.thrift_ins
-            if r2 is not None:
-                # patch thrift field
-                r3 = self[int(k2)]
-
-                def setter(r3, v):
-                    if type(r3) in [list, set]:
-                        i = 0
-                        for _r3 in r3:
-                            setter(_r3, v[i])
-                            i += 1
-                    elif isinstance(r3, DummyThrift):
-                        for vk, vv in v.__dict__.items():
-                            setattr(r3, vk, vv)
-                    return r3
-
-                setter(r3, v)
+            if r2 is not None and not self.is_raw:
+                thrift_spec = getattr(r2, "thrift_spec", None)
+                if thrift_spec is not None:
+                    for spec in thrift_spec:
+                        if spec is None:
+                            continue
+                        fid, ftype, fname, fttypes, _ = spec
+                        if fid == k2:
+                            def setter(r1, r2, v):
+                                if r1 is not None:
+                                    r3 = getattr(r1, r2)
+                                else:
+                                    r3 = r2
+                                if isinstance(r3, DummyThrift):
+                                    for vk, vv in v.__dict__.items():
+                                        setattr(r3, vk, vv)
+                                    return r3
+                                elif type(r3) in [list, set]:
+                                    i = 0
+                                    v2 = []
+                                    for _r3 in r3:
+                                        v2.append(setter(None, _r3, v[i]))
+                                        i += 1
+                                    setattr(r1, r2, v2)
+                                    return v2
+                                elif r1 is not None:
+                                    setattr(r1, r2, v)
+                                return v
+                            setter(r2, fname, v)
+        elif k in self.field_names:
+            # patch thrift field to int
+            r2 = self.thrift_ins
+            thrift_spec = getattr(r2, "thrift_spec")
+            for spec in thrift_spec:
+                if spec is None:
+                    continue
+                fid, ftype, fname, fttypes, _ = spec
+                if fname == k:
+                    setattr(self, f'val_{fid}', v)
+                    return
+            return setattr(self.thrift_ins, k, v)
         super().__setattr__(k, v)
 
     def __repr__(self):

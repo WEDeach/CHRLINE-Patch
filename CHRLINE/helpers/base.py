@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from typing import TYPE_CHECKING, Optional
+
 from ..logger import Logger
 
 if TYPE_CHECKING:
@@ -20,6 +21,7 @@ class BaseHelper:
 
     def log(self, text: str, debugOnly: bool = False):
         logger = self.get_logger()
+
         if debugOnly:
             return logger.debug(text)
         return logger.info(text)

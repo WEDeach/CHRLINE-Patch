@@ -6,8 +6,10 @@ class SysHelper(BaseHelper):
     def __init__(self):
         pass
 
-    def getToType(self, mid):
+    def getToType(self, mid: str):
         """
+        Get mid type.
+
         USER(0),
         ROOM(1),
         GROUP(2),
@@ -34,7 +36,7 @@ class SysHelper(BaseHelper):
             return 6
         if _u == "t":
             return 7
-
+        raise ValueError("Mid type not found: {mid}")
 
     def checkRespIsSuccessWithLpv(self, resp, lpv: int = 1, status_code: int = 200):
         ckStatusCode = lpv != 1

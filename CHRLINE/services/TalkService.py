@@ -612,12 +612,14 @@ class TalkService(ChrHelperProtocol):
             7: 11,
         }
         extra_group_type = {
-            1: 8,
-            3: 10,
-            4: 2,
-            5: 10,
-            6: 11,
-            7: 11,
+            1: 11,
+            2: 2,
+            3: 11,
+            4: (13, (11, 10)),
+            5: (13, (11, 10)),
+            6: 2,
+            7: 2,
+            8: 2,
         }
         chat = [
             [11, 2, chatMid],
@@ -635,10 +637,16 @@ class TalkService(ChrHelperProtocol):
                 for k, v in extra_group_type.items():
                     v2 = groupExtra.get(k)
                     if v2 is not None:
-                        chat_extra.append([v, k, v2])
-                chat.append([12, 8, chat_extra])
+                        if isinstance(v, int):
+                            chat_extra.append([v, k, v2])
+                        else:
+                            v3, v4 = v
+                            v5 = [_v for _v in v4] + [v2]
+                            chat_extra.append([v3, k, v5])
+                chat_extra = [[12, 1, chat_extra]]
             else:
                 raise NotImplementedError
+            chat.append([12, 8, chat_extra])
         params = [
             [8, 1, self.client.getCurrReqId()],
             [12, 2, chat],

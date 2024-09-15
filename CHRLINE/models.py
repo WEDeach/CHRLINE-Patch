@@ -733,6 +733,22 @@ class Models(ChrHelperProtocol):
             return [private_key, b64encode(public_key).decode()]
         return [private_key, f"?secret={secret}&e2eeVersion={version}"]
 
+    def getAllE2EESelfKey(self):
+        r = []
+        keys = self.client.getE2EEPublicKeys()
+        if not isinstance(keys, list):
+            raise ValueError
+        for k in keys:
+            key_id = k[2]  # keyId
+            key_pk = k[4]  # keyData
+            local_key_data = self.getE2EESelfKeyDataByKeyId(key_id)
+            if local_key_data is not None:
+                local_key_data["createdTime"] = k[5]
+                r.append(local_key_data)
+            else:
+                self.client.logger.warn(f"E2EE Self Key not found: {k}")
+        return r
+
     def getE2EESelfKeyData(self, mid: str):
         savePath = self.getSavePath(".e2eeKeys")
         fn = f"{mid}.json"
@@ -886,6 +902,7 @@ class Models(ChrHelperProtocol):
         # 好處是可以檢測是否有fields未定義
         # 相對帶來性能消耗.
         a = None
+        logger = self.__logger.overload("THRIFT")
         if readWith is not None:
             new1 = self.generateDummyProtocol2(data, 4, fixSuccessHeaders=True)
             try:
@@ -908,7 +925,6 @@ class Models(ChrHelperProtocol):
             if isinstance(refs, DummyThrift):
                 diff = refs.dd_diff()
                 if diff:
-                    logger = self.__logger.overload("THRIFT")
                     logger.warn(
                         " ".join(
                             [
@@ -964,7 +980,7 @@ class Models(ChrHelperProtocol):
 
             c = __cek(a, f)
             setattr(b, f"val_{a.id}", c)
-            check_miss(b)
+            # check_miss(b)
 
         if a is None or not isinstance(a, DummyThrift):
             a = _gen()

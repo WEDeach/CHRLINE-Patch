@@ -268,8 +268,8 @@ class TalkService(ChrHelperProtocol):
         elif chunks:
             cType = 5
             ep = self.client.LINE_COMPACT_E2EE_MESSAGE_ENDPOINT
-        sqrd = [cType]
         midType = self.client.getToType(to)
+        sqrd = [cType, midType]
         _reqId = self.client.getCurrReqId()
         self._logger.debug(
             f"[sendCompactMessage] REQ_ID: {_reqId}",

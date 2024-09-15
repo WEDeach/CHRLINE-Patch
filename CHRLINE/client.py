@@ -170,7 +170,7 @@ class CHRLINE(
         if not isinstance(mid, str):
             raise TypeError(
                 "`mid` expected type `str`, but got type `%s`: %r"
-                % (type(self.mid), self.mid)
+                % (type(mid), mid)
             )
         self.mid = mid
         __displayName = self.checkAndGetValue(self.profile, "displayName", 20)

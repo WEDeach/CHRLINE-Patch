@@ -1,4 +1,7 @@
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+
+if TYPE_CHECKING:
+    from ..client import CHRLINE
 
 
 class DummyProtocolData:
@@ -37,12 +40,15 @@ class DummyThrift:
         self,
         name: Optional[str] = None,
         ins: object = None,
+        cl: Optional["CHRLINE"] = None,
         **kwargs,
     ):
         if name is not None:
             self.__name__ = name
         if ins is not None:
             self.__ins = ins
+        if cl is not None:
+            self.__cl = cl
         if kwargs:
             for key in kwargs:
                 setattr(self, key, kwargs[key])
@@ -57,9 +63,15 @@ class DummyThrift:
                 if fid == index:
                     return getattr(self, fname)
         return getattr(self, f"val_{index}")
-    
+
     def __setitem__(self, key, value):
         return self.__setattr__(key, value)
+
+    @property
+    def client(self) -> "CHRLINE":
+        if self.__cl is None:
+            raise NotImplementedError
+        return self.__cl
 
     @property
     def thrift_ins(self):
@@ -224,19 +236,25 @@ class DummyThrift:
                         return data
 
                 def warp_struct(r, rd):
-                    r2 = self.wrap_thrift(rd, self.is_dummy)
-                    warp_spec(r2.thrift_ins, rd.thrift_spec)
+                    r2 = self.wrap_thrift(self.client, rd, self.is_dummy)
+                    r2._ref = r
+                    warp_spec(r2, rd.thrift_spec)
                     return r2
 
                 warp(r, fname, ftype, data, fttypes)
 
         thrift_spec: Optional[Tuple[Any]] = getattr(r, "thrift_spec", None)
         if thrift_spec is not None:
-            warp_spec(r, thrift_spec)
+            warp_spec(self, thrift_spec)
 
     @staticmethod
-    def wrap_thrift(thrift_ins, isDummy=True):
-        r = DummyThrift(thrift_ins.__class__.__name__, ins=thrift_ins)
+    def wrap_thrift(cl, thrift_ins, isDummy=True):
+        n = thrift_ins.__class__.__name__
+        b = {"ins":thrift_ins, "cl":cl}
+        r = DummyThrift(n, **b)
+        w = cl.getTypeWrapper(r.__ins_name__)
+        if w is not None:
+            r = w(n, **b)
         r.is_dummy = isDummy
         if isinstance(thrift_ins, BaseException):
             r.is_raw = True
@@ -252,7 +270,7 @@ class DummyThrift:
                         return r2.thrift_ins
                     return r2
         return None
-        
+
     def __setattr__(self, k, v):
         k2: Union[int, None] = None
         if isinstance(k, str) and k.startswith("val_"):
@@ -272,6 +290,7 @@ class DummyThrift:
                             continue
                         fid, ftype, fname, fttypes, _ = spec
                         if fid == k2:
+
                             def setter(r1, r2, v):
                                 if r1 is not None:
                                     r3 = getattr(r1, r2)
@@ -292,6 +311,7 @@ class DummyThrift:
                                 elif r1 is not None:
                                     setattr(r1, r2, v)
                                 return v
+
                             setter(r2, fname, v)
         elif k in self.field_names:
             # patch thrift field to int
@@ -302,7 +322,7 @@ class DummyThrift:
                     continue
                 fid, ftype, fname, fttypes, _ = spec
                 if fname == k:
-                    setattr(self, f'val_{fid}', v)
+                    setattr(self, f"val_{fid}", v)
                     return
             return setattr(self.thrift_ins, k, v)
         super().__setattr__(k, v)

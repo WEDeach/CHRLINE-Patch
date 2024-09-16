@@ -915,7 +915,7 @@ class Models(ChrHelperProtocol):
             if a is not None:
                 e = TMemoryBuffer(new1)
                 f = tcProtocol(e)
-                a = DummyThrift.wrap_thrift(a, not self.client.use_thrift)
+                a = DummyThrift.wrap_thrift(self.client, a, not self.client.use_thrift)
                 a.read(f)
 
         def _gen():

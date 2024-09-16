@@ -2,7 +2,14 @@
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
-from .helpers import BaseHelper, LiffHelper, SquareHelper, SysHelper, TalkHelper
+from .helpers import (
+    BaseHelper,
+    LiffHelper,
+    SquareHelper,
+    SysHelper,
+    TalkHelper,
+    ThriftHelper,
+)
 
 if TYPE_CHECKING:
     from .client import CHRLINE
@@ -16,7 +23,7 @@ class ChrHelperProtocol(ABC):
         raise NotImplementedError
 
 
-class ChrHelper(LiffHelper, SquareHelper, SysHelper, TalkHelper):
+class ChrHelper(LiffHelper, SquareHelper, SysHelper, TalkHelper, ThriftHelper):
     def __init__(self, cl):
         super().__init__()
         BaseHelper.__init__(self, cl)

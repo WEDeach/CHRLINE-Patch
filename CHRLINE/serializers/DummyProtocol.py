@@ -35,6 +35,7 @@ class DummyProtocol:
 class DummyThrift:
     __is_dummy = True
     __is_raw = False
+    _ref: Union[Any, "DummyThrift"]
 
     def __init__(
         self,
@@ -54,14 +55,16 @@ class DummyThrift:
                 setattr(self, key, kwargs[key])
 
     def __getitem__(self, index):
-        thrift_spec: Optional[Tuple[Any]] = getattr(self, "thrift_spec", None)
-        if thrift_spec is not None:
-            for spec in thrift_spec:
-                if spec is None:
-                    continue
-                fid, ftype, fname, fttypes, _ = spec
-                if fid == index:
-                    return getattr(self, fname)
+        r = self.thrift_ins
+        if r is not None:
+            thrift_spec: Optional[Tuple[Any]] = getattr(r, "thrift_spec", None)
+            if thrift_spec is not None:
+                for spec in thrift_spec:
+                    if spec is None:
+                        continue
+                    fid, ftype, fname, fttypes, _ = spec
+                    if fid == index:
+                        return getattr(r, fname)
         return getattr(self, f"val_{index}")
 
     def __setitem__(self, key, value):
@@ -220,6 +223,7 @@ class DummyThrift:
                                 data2[dk2] = dv2
                             data.clear()
                             data.update(data2)
+                            return data2
                         if ftype in [14, 15]:
                             data2 = []
                             for _data in data:
@@ -300,6 +304,12 @@ class DummyThrift:
                                     for vk, vv in v.__dict__.items():
                                         setattr(r3, vk, vv)
                                     return r3
+                                elif isinstance(r3, dict):
+                                    v2 = {}
+                                    for vk, vv in v.items():
+                                        v2[vk] = setter(None, r3[vk], vv)
+                                    setattr(r1, r2, v2)
+                                    return v2
                                 elif type(r3) in [list, set]:
                                     i = 0
                                     v2 = []

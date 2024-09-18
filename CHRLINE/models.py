@@ -937,7 +937,7 @@ class Models(ChrHelperProtocol):
 
                 # check fields
                 for f in refs.field_names:
-                    check_miss(getattr(refs, f))
+                    check_miss(getattr(refs.thrift_ins, f))
             elif isinstance(refs, dict):
                 for rk, rv in refs.items():
                     check_miss(rk)
@@ -980,7 +980,6 @@ class Models(ChrHelperProtocol):
 
             c = __cek(a, f)
             setattr(b, f"val_{a.id}", c)
-            # check_miss(b)
 
         if a is None or not isinstance(a, DummyThrift):
             a = _gen()

@@ -33,9 +33,11 @@ class DummyProtocol:
 
 
 class DummyThrift:
+    __ins: object = None
     __is_dummy = True
     __is_raw = False
     _ref: Union[Any, "DummyThrift"]
+    _sync_wrapper = True
 
     def __init__(
         self,
@@ -53,22 +55,6 @@ class DummyThrift:
         if kwargs:
             for key in kwargs:
                 setattr(self, key, kwargs[key])
-
-    def __getitem__(self, index):
-        r = self.thrift_ins
-        if r is not None:
-            thrift_spec: Optional[Tuple[Any]] = getattr(r, "thrift_spec", None)
-            if thrift_spec is not None:
-                for spec in thrift_spec:
-                    if spec is None:
-                        continue
-                    fid, ftype, fname, fttypes, _ = spec
-                    if fid == index:
-                        return getattr(r, fname)
-        return getattr(self, f"val_{index}")
-
-    def __setitem__(self, key, value):
-        return self.__setattr__(key, value)
 
     @property
     def client(self) -> "CHRLINE":
@@ -121,6 +107,40 @@ class DummyThrift:
     @is_raw.setter
     def is_raw(self, val: bool):
         self.__is_raw = val
+
+    @property
+    def sync_wrapper(self):
+        return self._sync_wrapper
+
+    @sync_wrapper.setter
+    def sync_wrapper(self, val: bool):
+        self._sync_wrapper = val
+
+        def patch(dv):
+            if isinstance(dv, DummyThrift):
+                dv.sync_wrapper = val
+            if isinstance(dv, dict):
+                _d = {}
+                for dk2, dv2 in dv.items():
+                    _dk = patch(dk2)
+                    _dv = patch(dv2)
+                    _d[_dk] = _dv
+                dv.clear()
+                dv.update(_d)
+            if type(dv) in [list, set]:
+                _d = []
+                for dv2 in dv:
+                    _d.append(patch(dv2))
+                if isinstance(dv, list):
+                    dv.clear()
+                    dv.extend(_d)
+                elif isinstance(dv, set):
+                    dv.clear()
+                    dv.update(set(_d))
+            return dv
+
+        for dk, dv in self.dd().items():
+            patch(dv)
 
     @property
     def get(self):
@@ -242,19 +262,19 @@ class DummyThrift:
                 def warp_struct(r, rd):
                     r2 = self.wrap_thrift(self.client, rd, self.is_dummy)
                     r2._ref = r
-                    warp_spec(r2, rd.thrift_spec)
+                    warp_spec(rd, rd.thrift_spec)
                     return r2
 
                 warp(r, fname, ftype, data, fttypes)
 
         thrift_spec: Optional[Tuple[Any]] = getattr(r, "thrift_spec", None)
         if thrift_spec is not None:
-            warp_spec(self, thrift_spec)
+            warp_spec(r, thrift_spec)
 
     @staticmethod
     def wrap_thrift(cl, thrift_ins, isDummy=True):
         n = thrift_ins.__class__.__name__
-        b = {"ins":thrift_ins, "cl":cl}
+        b = {"ins": thrift_ins, "cl": cl}
         r = DummyThrift(n, **b)
         w = cl.getTypeWrapper(r.__ins_name__)
         if w is not None:
@@ -263,6 +283,23 @@ class DummyThrift:
         if isinstance(thrift_ins, BaseException):
             r.is_raw = True
         return r
+
+    def __getitem__(self, index):
+        # PRIORITY: thrift > dummy
+        r = self.thrift_ins
+        if r is not None:
+            thrift_spec: Optional[Tuple[Any]] = getattr(r, "thrift_spec", None)
+            if thrift_spec is not None:
+                for spec in thrift_spec:
+                    if spec is None:
+                        continue
+                    fid, ftype, fname, fttypes, _ = spec
+                    if fid == index:
+                        return getattr(r, fname)
+        return getattr(self, f"val_{index}")
+
+    def __setitem__(self, key, value):
+        return self.__setattr__(f"val_{key}", value)
 
     def __getattr__(self, name):
         if name not in ["_DummyThrift__ins", "thrift_ins"]:
@@ -273,13 +310,15 @@ class DummyThrift:
                     if isinstance(r2, DummyThrift) and r2.is_raw:
                         return r2.thrift_ins
                     return r2
-        return None
+        return super().__getattribute__(name)
 
     def __setattr__(self, k, v):
+        if not self.sync_wrapper:
+            return super().__setattr__(k, v)
         k2: Union[int, None] = None
         if isinstance(k, str) and k.startswith("val_"):
             k2 = int(k.split("val_")[1])
-        if isinstance(k, int):
+        elif isinstance(k, int):
             # conv int to field id.
             k2 = k
             k = f"val_{k}"

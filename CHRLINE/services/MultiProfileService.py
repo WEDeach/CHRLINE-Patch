@@ -1,19 +1,22 @@
 # -*- coding: utf-8 -*-
 
-from typing import Dict, List
+from typing import TYPE_CHECKING, Dict, List
 
-from ..helper import ChrHelperProtocol
-from .BaseService import BaseServiceSender, BaseServiceStruct
+from .BaseService import BaseService, BaseServiceSender, BaseServiceStruct
+
+if TYPE_CHECKING:
+    from ..client import CHRLINE
 
 
-class MultiProfileService(ChrHelperProtocol):
+class MultiProfileService(BaseService):
     __REQ_TYPE = 4
     __RES_TYPE = 4
-    __ENDPOINT = "/S4"
+    __ENDPOINT = "/PFS4"
 
-    def __init__(self):
+    def __init__(self, client: "CHRLINE"):
+        self.client = client
         self.__sender = BaseServiceSender(
-            self.client,
+            client,
             "MultiProfileService",
             self.__REQ_TYPE,
             self.__RES_TYPE,

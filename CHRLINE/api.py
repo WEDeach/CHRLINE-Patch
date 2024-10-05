@@ -23,6 +23,7 @@ from .services.HomeSafetyCheckService import HomeSafetyCheckService
 from .services.InterlockService import InterlockService
 from .services.LiffService import LiffService
 from .services.LoginService import LoginService
+from .services.MultiProfileService import MultiProfileService
 from .services.PremiumFontService import PremiumFontService
 from .services.PrimaryAccountInitService import PrimaryAccountInitService
 from .services.PrimaryAccountSmartSwitchRestorePreparationService import (
@@ -78,6 +79,7 @@ class API(
     CoinService,
     ShopCollectionService,
     PremiumFontService,
+    MultiProfileService,
 ):
     _msgSeq = 0
     url = "https://gf.line.naver.jp/enc"
@@ -135,6 +137,7 @@ class API(
         ShopCollectionService.__init__(self)
         PremiumFontService.__init__(self)
         self.s_smart_switch = PrimaryAccountSmartSwitchRestorePreparationService(self)
+        self.s_multi_profile = MultiProfileService(self.client)
 
     def requestPwlessLogin(self, phone, pw):
         pwless_code = self.checkAndGetValue(self.createPwlessSession(phone), 1, "val_1")

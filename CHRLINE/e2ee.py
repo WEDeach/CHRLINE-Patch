@@ -18,7 +18,7 @@ from cryptography.hazmat.primitives import hashes, hmac
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
-from .exceptions import LineServiceException
+from .exceptions import E2EESelfKeyNotFoundException, LineServiceException
 from .helper import ChrHelperProtocol
 
 
@@ -30,12 +30,15 @@ class E2EE(ChrHelperProtocol):
         r = self.client.getE2EEPublicKeys()
         if isinstance(r, list):
             self.__e2ee_key_id = r[0][2]
-            selfKeyData = self.client.getE2EESelfKeyData(self.client.mid)
-            if selfKeyData["keyId"] != self.__e2ee_key_id:
-                # check e2ee key
-                r2 = self.client.getE2EESelfKeyDataByKeyId(self.__e2ee_key_id)
-                if r2 is None:
-                    self.__logger.warn(f"E2EE Key not found: {self.__e2ee_key_id}")
+            try:
+                selfKeyData = self.client.getE2EESelfKeyData(self.client.mid)
+                if selfKeyData["keyId"] != self.__e2ee_key_id:
+                    # check e2ee key
+                    r2 = self.client.getE2EESelfKeyDataByKeyId(self.__e2ee_key_id)
+                    if r2 is None:
+                        self.__logger.warn(f"E2EE Key not found: {self.__e2ee_key_id}")
+            except E2EESelfKeyNotFoundException as e:
+                self.__logger.warn(e.hint)
 
     def getE2EELocalPublicKey(self, mid, keyId):
         toType = self.client.getToType(mid)
@@ -383,6 +386,8 @@ class E2EE(ChrHelperProtocol):
     def decryptE2EETextMessage(self, messageObj, isSelf=True):
         _from = messageObj.sender.mid
         to = messageObj.receiver.mid
+        if _from is None or to is None:
+            return None
         toType = self.client.checkAndGetValue(messageObj, "toType", 3)
         metadata = self.client.checkAndGetValue(messageObj, "contentMetadata", 18)
         if metadata is None:

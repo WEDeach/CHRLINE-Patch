@@ -5,6 +5,10 @@ class ChrlineException(Exception):
     pass
 
 
+class E2EEException(ChrlineException):
+    pass
+
+
 class LineServiceException(ChrlineException):
     def __init__(self, data: dict, code=None, reason=None, parameterMap=None, raw=None):
         self.code = data.get("code", -519)  # base code for CHR
@@ -28,3 +32,10 @@ class LineServiceException(ChrlineException):
             fmt += ", Metadata: {2}"
 
         super().__init__(fmt.format(self.code, self.message, self.metadata))
+
+
+class E2EESelfKeyNotFoundException(E2EEException):
+    def __init__(self, hint: str):
+        self.hint = hint
+
+        super().__init__(self.hint)

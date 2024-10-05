@@ -5,6 +5,7 @@ import os
 import struct
 import time
 from base64 import b64encode
+from enum import Enum
 from hashlib import md5
 from typing import Any, Optional, Union
 from urllib.parse import quote
@@ -20,7 +21,7 @@ from Crypto.Util.Padding import pad, unpad
 
 from thrift.transport.TTransport import TMemoryBuffer
 
-from .exceptions import LineServiceException
+from .exceptions import E2EESelfKeyNotFoundException, LineServiceException
 from .helper import ChrHelperProtocol
 from .serializers.DummyProtocol import (
     DummyProtocol,
@@ -28,6 +29,10 @@ from .serializers.DummyProtocol import (
     DummyProtocolSerializer,
     DummyThrift,
 )
+from .utils.patchs import enum_missing
+
+if Enum:
+    setattr(Enum, "_missing_", enum_missing)
 from .services.thrift import *
 from .services.thrift.ap.TCompactProtocol import TCompactProtocol as tcProtocol
 from .services.thrift.ttypes import TalkException
@@ -595,7 +600,7 @@ class Models(ChrHelperProtocol):
                         )
                         res = tmore
                     else:
-                        raise ValueError(f"Unknown ThriftType: {ttype}")
+                        raise ValueError(f"Unknown ThriftType: {ttype}, data={data}")
 
                     # 2024/9/2: CHANGE ALL RES TO DUMMY.
                     res = self.serializeDummyProtocolToThrift(
@@ -766,7 +771,9 @@ class Models(ChrHelperProtocol):
                 "`getE2EEPublicKeys` expected type `list`, but got type `%s`: %r"
                 % (type(keys), keys)
             )
-        raise Exception("E2EE Key has not been saved, try register or use SQR Login")
+        raise E2EESelfKeyNotFoundException(
+            "E2EE Key has not been saved, try register or use SQR Login"
+        )
 
     def getE2EESelfKeyDataByKeyId(self, keyId):
         savePath = self.getSavePath(".e2eeKeys")
@@ -1000,7 +1007,7 @@ class Models(ChrHelperProtocol):
         # 非 None 直接返回
         # 若為 Exception 則直接使用 raise
         for field_name in a.field_names:
-            field = getattr(a, field_name)
+            field = getattr(a.thrift_ins, field_name)
             if field is not None:
                 if isinstance(field, Exception):
                     raise field

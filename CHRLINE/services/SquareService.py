@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from typing import TYPE_CHECKING, Dict, List, Optional
+
 from .BaseService import BaseService, BaseServiceStruct
 
 if TYPE_CHECKING:
@@ -115,9 +116,9 @@ class SquareService(BaseService):
 
     def fetchMyEvents(
         self,
-        subscriptionId: int = 0,
-        syncToken: str = None,
-        continuationToken: str = None,
+        subscriptionId: Optional[int] = 0,
+        syncToken: Optional[str] = None,
+        continuationToken: Optional[str] = None,
         limit: int = 100,
     ):
         """Fetch square events."""

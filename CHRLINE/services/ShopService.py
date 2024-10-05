@@ -1,123 +1,95 @@
 # -*- coding: utf-8 -*-
 
+from typing import Optional, Union
 
+from ..helper import ChrHelperProtocol
 from ..helpers.bulders.combinations_sticker import CombinationSticker
+from .BaseService import BaseServiceSender
 
 
-class ShopService(object):
-    ShopService_REQ_TYPE = 3
-    ShopService_RES_TYPE = 3
+class ShopService(ChrHelperProtocol):
+    __REQ_TYPE = 4
+    __RES_TYPE = 4
+    __ENDPOINT = "/TSHOP4"
 
     def __init__(self):
-        pass
+        self.__sender = BaseServiceSender(
+            self.client,
+            "ShopService",
+            self.__REQ_TYPE,
+            self.__RES_TYPE,
+            self.__ENDPOINT,
+        )
 
-    def getProduct(self, shopId, productId, language="zh-TW", country="TW"):
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            10,
-            103,
-            101,
-            116,
-            80,
-            114,
-            111,
-            100,
-            117,
-            99,
-            116,
-            0,
-            0,
-            0,
-            0,
+    def getProduct(
+        self, shopId: str, productId: Union[str, int], language="zh-TW", country="TW"
+    ):
+        METHOD_NAME = "getProduct"
+        params = [
+            [11, 2, shopId],
+            [11, 3, productId],
+            [
+                12,
+                4,
+                [
+                    [11, 1, language],
+                    [11, 2, country],
+                ],
+            ],
         ]
-        sqrd += [11, 0, 2, 0, 0, 0, len(shopId)]  # e.g. stickershop
-        for value in shopId:
-            sqrd.append(ord(value))
-        sqrd += [11, 0, 3, 0, 0, 0, len(productId)]
-        for value in productId:
-            sqrd.append(ord(value))
-        sqrd += [12, 0, 4]
-        sqrd += [11, 0, 1, 0, 0, 0, len(language)]
-        for value in language:
-            sqrd.append(ord(value))
-        sqrd += [11, 0, 2, 0, 0, 0, len(country)]
-        for value in country:
-            sqrd.append(ord(value))
-        sqrd += [0, 0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getProductsByAuthor(self, authorId, productType=1):
-        sqrd = (
-            [128, 1, 0, 1] + self.getStringBytes("getProductsByAuthor") + [0, 0, 0, 0]
-        )
-        sqrd += [12, 0, 2]
-        sqrd += [8, 0, 1] + self.getIntBytes(productType)
-        sqrd += [11, 0, 2] + self.getStringBytes(authorId)
-        sqrd += [8, 0, 3] + self.getIntBytes(0)
-        sqrd += [8, 0, 4] + self.getIntBytes(100)
-        sqrd += [2, 0, 6, int(True)]
-        sqrd += [0, 0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd
-        )
+    def getProductsByAuthor(self, authorId, productType=1, offset=0, limit=100):
+        METHOD_NAME = "getProductsByAuthor"
+        params = [
+            [8, 1, productType],
+            [11, 2, authorId],
+            [8, 3, offset],
+            [8, 4, limit],
+        ]
+        params = [[12, 2, params]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def getStudentInformation(self):
-        sqrd = (
-            [128, 1, 0, 1] + self.getStringBytes("getStudentInformation") + [0, 0, 0, 0]
-        )
-        sqrd += [12, 0, 2]
-        sqrd += [0, 0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd
-        )
+        METHOD_NAME = "getStudentInformation"
+        params = []
+        params = [[12, 2, params]]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def canReceivePresent(self, shopId, productId, recipientMid):
-        sqrd = [128, 1, 0, 1] + self.getStringBytes("canReceivePresent") + [0, 0, 0, 0]
-        sqrd += [11, 0, 2] + self.getStringBytes(shopId)
-        sqrd += [11, 0, 3] + self.getStringBytes(productId)
-        sqrd += [12, 0, 4]
-        sqrd += [11, 0, 1] + self.getStringBytes("zh_TW")  # language
-        sqrd += [11, 0, 2] + self.getStringBytes("TW")  # country
-        sqrd += [0]
-        sqrd += [11, 0, 5] + self.getStringBytes(recipientMid)
-        sqrd += [0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd
-        )
+    def canReceivePresent(self, shopId, productId, recipientMid, language="zh_TW", country="TW"):
+        METHOD_NAME = "canReceivePresent"
+        params = [
+            [11, 2, shopId],
+            [11, 3, productId],
+            [12, 4, [
+                [11, 1, language],
+                [11, 2, country],
+            ]],
+            [11, 5, recipientMid],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
     def getOwnedProductSummaries(
         self, shopId, offset=0, limit=200, language="zh_TW", country="TW"
     ):
-        sqrd = (
-            [128, 1, 0, 1]
-            + self.getStringBytes("getOwnedProductSummaries")
-            + [0, 0, 0, 0]
-        )
-        sqrd += [11, 0, 2] + self.getStringBytes(shopId)
-        sqrd += [8, 0, 3] + self.getIntBytes(offset)
-        sqrd += [8, 0, 4] + self.getIntBytes(limit)
-        sqrd += [12, 0, 5]
-        sqrd += [11, 0, 1] + self.getStringBytes(language)
-        sqrd += [11, 0, 2] + self.getStringBytes(country)
-        sqrd += [0, 0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd
-        )
+        METHOD_NAME = "getOwnedProductSummaries"
+        params = [
+            [11, 2, shopId],
+            [8, 3, offset],
+            [8, 4, limit],
+            [12, 5, [
+                [11, 1, language],
+                [11, 2, country],
+            ]],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
     def getShowcaseV3(
         self,
         productType: int,
         showcaseType: int,
         subType: int,
-        continuationToken: str = None,
+        continuationToken: Optional[str] = None,
         limit: int = 20,
     ):
         """
@@ -133,6 +105,7 @@ class ShopService(object):
             CREATORS(1),
             STICON(2);
         """
+        METHOD_NAME = "getShowcaseV3"
         params = [
             [
                 12,
@@ -146,12 +119,7 @@ class ShopService(object):
                 ],
             ]
         ]
-        sqrd = self.generateDummyProtocol(
-            "getShowcaseV3", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getProductV2(
         self,
@@ -160,6 +128,7 @@ class ShopService(object):
         carrierCode: str = "",
         saveBrowsingHistory: bool = True,
     ):
+        METHOD_NAME = "getProductV2"
         params = [
             [
                 12,
@@ -172,12 +141,7 @@ class ShopService(object):
                 ],
             ]
         ]
-        sqrd = self.generateDummyProtocol(
-            "getProductV2", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getProductByVersion(
         self,
@@ -187,6 +151,7 @@ class ShopService(object):
         language: str = "zh_TW",
         country: str = "TW",
     ):
+        METHOD_NAME = "getProductByVersion"
         params = [
             [11, 2, shopId],
             [11, 3, productId],
@@ -200,12 +165,7 @@ class ShopService(object):
                 ],
             ],
         ]
-        sqrd = self.generateDummyProtocol(
-            "getProductByVersion", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def placePurchaseOrderForFreeProduct(
         self,
@@ -220,6 +180,7 @@ class ShopService(object):
         country: str = "TW",
         presentAttributes: dict = {},
     ):
+        METHOD_NAME = "placePurchaseOrderForFreeProduct"
         params = [
             [
                 12,
@@ -250,12 +211,7 @@ class ShopService(object):
                 ],
             ],
         ]
-        sqrd = self.generateDummyProtocol(
-            "placePurchaseOrderForFreeProduct", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def placePurchaseOrderWithLineCoin(
         self,
@@ -270,6 +226,7 @@ class ShopService(object):
         country: str = "TW",
         presentAttributes: dict = {},
     ):
+        METHOD_NAME = "placePurchaseOrderWithLineCoin"
         params = [
             [
                 12,
@@ -300,12 +257,7 @@ class ShopService(object):
                 ],
             ],
         ]
-        sqrd = self.generateDummyProtocol(
-            "placePurchaseOrderWithLineCoin", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def placePurchaseOrderWithIAP(
         self,
@@ -320,6 +272,7 @@ class ShopService(object):
         country: str = "TW",
         presentAttributes: dict = {},
     ):
+        METHOD_NAME = "placePurchaseOrderWithIAP"
         params = [
             [
                 12,
@@ -350,12 +303,7 @@ class ShopService(object):
                 ],
             ],
         ]
-        sqrd = self.generateDummyProtocol(
-            "placePurchaseOrderWithIAP", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getOwnedProducts(
         self,
@@ -365,6 +313,7 @@ class ShopService(object):
         language: str = "zh_TW",
         country: str = "TW",
     ):
+        METHOD_NAME = "getOwnedProducts"
         params = [
             [11, 2, shopId],
             [8, 3, offset],
@@ -378,12 +327,7 @@ class ShopService(object):
                 ],
             ],
         ]
-        sqrd = self.generateDummyProtocol(
-            "getOwnedProducts", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getPurchasedProducts(
         self,
@@ -393,6 +337,7 @@ class ShopService(object):
         language: str = "zh_TW",
         country: str = "TW",
     ):
+        METHOD_NAME = "getPurchasedProducts"
         params = [
             [11, 2, shopId],
             [8, 3, offset],
@@ -406,12 +351,7 @@ class ShopService(object):
                 ],
             ],
         ]
-        sqrd = self.generateDummyProtocol(
-            "getPurchasedProducts", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getReceivedPresents(
         self,
@@ -421,6 +361,7 @@ class ShopService(object):
         language: str = "zh_TW",
         country: str = "TW",
     ):
+        METHOD_NAME = "getReceivedPresents"
         params = [
             [11, 2, shopId],
             [8, 3, offset],
@@ -434,12 +375,7 @@ class ShopService(object):
                 ],
             ],
         ]
-        sqrd = self.generateDummyProtocol(
-            "getReceivedPresents", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSentPresents(
         self,
@@ -449,6 +385,7 @@ class ShopService(object):
         language: str = "zh_TW",
         country: str = "TW",
     ):
+        METHOD_NAME = "getSentPresents"
         params = [
             [11, 2, shopId],
             [8, 3, offset],
@@ -462,43 +399,30 @@ class ShopService(object):
                 ],
             ],
         ]
-        sqrd = self.generateDummyProtocol(
-            "getSentPresents", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def notifyProductEvent(
         self, shopId: str, productId: str, productVersion: int, productEvent: int
     ):
+        METHOD_NAME = "notifyProductEvent"
         params = [
             [11, 2, shopId],  # sticonshop
             [11, 3, productId],  # 1
             [10, 4, productVersion],  # 3
             [10, 5, productEvent],  # 16
         ]
-        sqrd = self.generateDummyProtocol(
-            "notifyProductEvent", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getProductValidationScheme(
         self, shopId: str, productId: str, productVersion: int
     ):
+        METHOD_NAME = "getProductValidationScheme"
         params = [
             [11, 2, shopId],
             [11, 3, productId],
             [10, 4, productVersion],
         ]
-        sqrd = self.generateDummyProtocol(
-            "getProductValidationScheme", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def validateProduct(
         self,
@@ -510,6 +434,7 @@ class ShopService(object):
         size: int,
         authCode: str,
     ):
+        METHOD_NAME = "validateProduct"
         params = [
             [11, 2, shopId],
             [11, 3, productId],
@@ -531,12 +456,7 @@ class ShopService(object):
                 ],
             ],
         ]
-        sqrd = self.generateDummyProtocol(
-            "validateProduct", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getProductsByBillingItemId(
         self,
@@ -545,6 +465,7 @@ class ShopService(object):
         language: str = "zh_TW",
         country: str = "TW",
     ):
+        METHOD_NAME = "getProductsByBillingItemId"
         params = [
             [11, 2, shopId],
             [15, 3, [11, billingItemIds]],
@@ -557,14 +478,10 @@ class ShopService(object):
                 ],
             ],
         ]
-        sqrd = self.generateDummyProtocol(
-            "getProductsByBillingItemId", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getUpdates(self, shopId: str, language: str = "zh_TW", country: str = "TW"):
+        METHOD_NAME = "getUpdates"
         params = [
             [11, 2, shopId],
             [
@@ -576,12 +493,7 @@ class ShopService(object):
                 ],
             ],
         ]
-        sqrd = self.generateDummyProtocol(
-            "getUpdates", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def searchProductsV2(
         self,
@@ -597,6 +509,7 @@ class ShopService(object):
         sortType: int = 0,
         enableSearchSuggestKeywords: bool = False,
     ):
+        METHOD_NAME = "searchProductsV2"
         params = [
             [
                 12,
@@ -619,12 +532,7 @@ class ShopService(object):
                 ],
             ],
         ]
-        sqrd = self.generateDummyProtocol(
-            "searchProductsV2", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getAggregatedHomeV2(
         self,
@@ -637,6 +545,7 @@ class ShopService(object):
         enableCategoryList: bool = True,
         enableTagsList: bool = True,
     ):
+        METHOD_NAME = "getAggregatedHomeV2"
         params = [
             [
                 12,
@@ -653,14 +562,10 @@ class ShopService(object):
                 ],
             ],
         ]
-        sqrd = self.generateDummyProtocol(
-            "getAggregatedHomeV2", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getAggregatedHomeNative(self, productType: int):
+        METHOD_NAME = "getAggregatedHomeNative"
         params = [
             [
                 12,
@@ -670,14 +575,10 @@ class ShopService(object):
                 ],
             ],
         ]
-        sqrd = self.generateDummyProtocol(
-            "getAggregatedHomeNative", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getDynamicHomeNative(self, productType: int = 1):
+        METHOD_NAME = "getDynamicHomeNative"
         params = [
             [
                 12,
@@ -687,14 +588,10 @@ class ShopService(object):
                 ],
             ],
         ]
-        sqrd = self.generateDummyProtocol(
-            "getDynamicHomeNative", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getAggregatedPremiumHome(self, showcaseRequests: list):
+        METHOD_NAME = "getAggregatedPremiumHome"
         params = [
             [
                 12,
@@ -704,14 +601,10 @@ class ShopService(object):
                 ],
             ],
         ]
-        sqrd = self.generateDummyProtocol(
-            "getAggregatedPremiumHome", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getAggregatedShowcaseV4(self, productType: int, showcaseRequests: list):
+        METHOD_NAME = "getAggregatedShowcaseV4"
         params = [
             [
                 12,
@@ -722,12 +615,7 @@ class ShopService(object):
                 ],
             ],
         ]
-        sqrd = self.generateDummyProtocol(
-            "getAggregatedShowcaseV4", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getRecommendationForUser(
         self,
@@ -737,6 +625,7 @@ class ShopService(object):
         language: str = "zh_TW",
         country: str = "TW",
     ):
+        METHOD_NAME = "getRecommendationForUser"
         params = [
             [11, 2, shopId],
             [8, 3, offset],
@@ -750,12 +639,7 @@ class ShopService(object):
                 ],
             ],
         ]
-        sqrd = self.generateDummyProtocol(
-            "getRecommendationForUser", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getRecommendationList(
         self,
@@ -765,10 +649,11 @@ class ShopService(object):
         offset: int = 0,
         limit: int = 20,
         language: str = "zh_TW",
-        continuationToken: str = None,
+        continuationToken: Optional[str] = None,
         shouldShuffle: bool = False,
         includeStickerIds: bool = True,
     ):
+        METHOD_NAME = "getRecommendationList"
         params = [
             [
                 12,
@@ -786,12 +671,7 @@ class ShopService(object):
                 ],
             ]
         ]
-        sqrd = self.generateDummyProtocol(
-            "getRecommendationList", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getCategories(
         self,
@@ -801,10 +681,11 @@ class ShopService(object):
         offset: int = 0,
         limit: int = 20,
         language: str = "zh_TW",
-        continuationToken: str = None,
+        continuationToken: Optional[str] = None,
         shouldShuffle: bool = False,
         includeStickerIds: bool = True,
     ):
+        METHOD_NAME = "getCategories"
         params = [
             [
                 12,
@@ -822,12 +703,7 @@ class ShopService(object):
                 ],
             ]
         ]
-        sqrd = self.generateDummyProtocol(
-            "getCategories", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def removeProductFromSubscriptionSlot(self):
         """
@@ -960,6 +836,7 @@ class ShopService(object):
         )
 
     def getResourceFile(self):
+        METHOD_NAME = "getResourceFile"
         params = [
             [
                 12,
@@ -970,12 +847,7 @@ class ShopService(object):
                 ],
             ]
         ]
-        sqrd = self.generateDummyProtocol(
-            "getResourceFile", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getExperimentsV2(self):
         """
@@ -996,13 +868,9 @@ class ShopService(object):
             NOT_PURCHASED(0),
             SUBSCRIPTION(1);
         """
+        METHOD_NAME = "getAutoSuggestionShowcase"
         params = [[12, 2, [[8, 1, productType], [8, 2, suggestionType]]]]
-        sqrd = self.generateDummyProtocol(
-            "getAutoSuggestionShowcase", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def sendReportForShop(self):
         """
@@ -1018,13 +886,9 @@ class ShopService(object):
         )
 
     def getOldSticonMapping(self, lastUpdatedTimeMillis: int = 1567749600000):
+        METHOD_NAME = "getOldSticonMapping"
         params = [[12, 2, [[10, 1, lastUpdatedTimeMillis]]]]
-        sqrd = self.generateDummyProtocol(
-            "getOldSticonMapping", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getEditorsPickShowcase(self):
         """
@@ -1079,13 +943,9 @@ class ShopService(object):
         )
 
     def getSubscriptionStatus(self):
+        METHOD_NAME = "getSubscriptionStatus"
         params = []
-        sqrd = self.generateDummyProtocol(
-            "getSubscriptionStatus", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def findRestorablePlan(self):
         """
@@ -1205,6 +1065,7 @@ class ShopService(object):
         )
 
     def getSuggestResourcesV2(self, productType: int, productIds: list):
+        METHOD_NAME = "getSuggestResourcesV2"
         params = [
             [
                 12,
@@ -1215,12 +1076,7 @@ class ShopService(object):
                 ],
             ]
         ]
-        sqrd = self.generateDummyProtocol(
-            "getSuggestResourcesV2", params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getAuthorsLatestProducts(self):
         """
@@ -1919,20 +1775,10 @@ class ShopService(object):
     def purchaseForSelf(self):
         METHOD_NAME = "purchaseForSelf"
         params = []
-        sqrd = self.generateDummyProtocol(
-            METHOD_NAME, params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.ShopService_API_PATH, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def createCombinationSticker(self, builder: CombinationSticker):
         """Create combination sticker."""
         METHOD_NAME = "createCombinationSticker"
         params = [[12, 2, builder.wrap()]]
-        sqrd = self.generateDummyProtocol(
-            METHOD_NAME, params, self.ShopService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_UNIFIED_SHOP_ENDPOINT, sqrd, self.ShopService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)

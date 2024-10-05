@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 if TYPE_CHECKING:
@@ -161,7 +162,7 @@ class DummyThrift:
         r: List[str] = []
         r2 = self.thrift_ins
         if r2 is not None:
-            thrift_spec: Optional[Tuple[Any]] = getattr(self, "thrift_spec", None)
+            thrift_spec: Optional[Tuple[Any]] = getattr(r2, "thrift_spec", None)
             if thrift_spec is not None:
                 for spec in thrift_spec:
                     if spec is None:
@@ -202,7 +203,7 @@ class DummyThrift:
                     r[key] = rv
 
             # thrift dict
-            thrift_spec: Optional[Tuple[Any]] = getattr(self, "thrift_spec", None)
+            thrift_spec: Optional[Tuple[Any]] = getattr(r2, "thrift_spec", None)
             if thrift_spec is not None:
                 for spec in thrift_spec:
                     if spec is None:
@@ -219,14 +220,15 @@ class DummyThrift:
         read_org(iprot)
 
         # 思路是先跑原本的read 再去取代值
-        def warp_spec(r, thrift_spec):
+        def warp_spec(r: DummyThrift, thrift_spec):
             for spec in thrift_spec:
                 if spec is None:
                     continue
                 fid, ftype, fname, fttypes, _ = spec
-                data = getattr(r, fname)
+                r2 = r.thrift_ins
+                data = getattr(r2, fname)
 
-                def warp(r, fname, ftype, data, fttypes):
+                def warp(r: DummyThrift, fname, ftype, data, fttypes):
                     if isinstance(r, Exception):
                         pass
                     elif data is not None:
@@ -259,17 +261,17 @@ class DummyThrift:
                             return data2
                         return data
 
-                def warp_struct(r, rd):
+                def warp_struct(r: DummyThrift, rd):
                     r2 = self.wrap_thrift(self.client, rd, self.is_dummy)
                     r2._ref = r
-                    warp_spec(rd, rd.thrift_spec)
+                    warp_spec(r2, rd.thrift_spec)
                     return r2
 
                 warp(r, fname, ftype, data, fttypes)
 
         thrift_spec: Optional[Tuple[Any]] = getattr(r, "thrift_spec", None)
         if thrift_spec is not None:
-            warp_spec(r, thrift_spec)
+            warp_spec(self, thrift_spec)
 
     @staticmethod
     def wrap_thrift(cl, thrift_ins, isDummy=True):
@@ -305,10 +307,12 @@ class DummyThrift:
         if name not in ["_DummyThrift__ins", "thrift_ins"]:
             r = self.thrift_ins
             if r is not None:
-                r2 = getattr(r, name, None)
-                if r2 is not None:
-                    if isinstance(r2, DummyThrift) and r2.is_raw:
-                        return r2.thrift_ins
+                ns = self.field_names
+                if name in ns:
+                    r2 = getattr(r, name, None)
+                    if r2 is not None:
+                        if isinstance(r2, DummyThrift) and r2.is_raw:
+                            return r2.thrift_ins
                     return r2
         return super().__getattribute__(name)
 
@@ -347,7 +351,8 @@ class DummyThrift:
                                     v2 = {}
                                     for vk, vv in v.items():
                                         v2[vk] = setter(None, r3[vk], vv)
-                                    setattr(r1, r2, v2)
+                                    if r1 is not None:
+                                        setattr(r1, r2, v2)
                                     return v2
                                 elif type(r3) in [list, set]:
                                     i = 0
@@ -355,10 +360,22 @@ class DummyThrift:
                                     for _r3 in r3:
                                         v2.append(setter(None, _r3, v[i]))
                                         i += 1
-                                    setattr(r1, r2, v2)
+                                    if r1 is not None:
+                                        setattr(r1, r2, v2)
                                     return v2
                                 elif r1 is not None:
-                                    setattr(r1, r2, v)
+                                    _r = getattr(r1, r2)
+                                else:
+                                    _r = r2
+                                vt = type(_r)
+                                if issubclass(vt, Enum):
+                                    if v in vt._value2member_map_:
+                                        v = vt(v)
+                                    else:
+                                        log = self.client.get_logger("DUMMY").overload("THRIFT")
+                                        log.warn(f"Enum '{_r.__class__.__name__}' missing value: {v}")
+                                if r1 is not None:
+                                    object.__setattr__(r1, r2, v)
                                 return v
 
                             setter(r2, fname, v)

@@ -1,7 +1,7 @@
 import struct
 import threading
 import time
-from typing import Any
+from typing import Any, Callable
 
 from ..client import CHRLINE
 from ..services import *
@@ -264,16 +264,22 @@ class ConnManager(object):
             if serviceType == 3:
                 data = cl.TCompactProtocol(cl, data)
                 resp = data.res
-                if resp and "error" in resp:
+                if isinstance(resp, dict) and "error" in resp:
                     self.log(f"can't use PUSH for OpenChat:{resp['error']}")
                     return False
                 subscription = cl.checkAndGetValue(resp, "subscription", 1)
                 events = cl.checkAndGetValue(resp, "events", 2)
                 syncToken = cl.checkAndGetValue(resp, "syncToken", 3)
                 subscriptionId = cl.checkAndGetValue(subscription, "subscriptionId", 1)
+                if not isinstance(events, list):
+                    raise ValueError(f"events should be list: {events}")
+                if syncToken is not None and not isinstance(syncToken, str):
+                    raise ValueError(f"syncToken should be str: {syncToken}")
                 self.log(
                     f"response fetchMyEvent({subscriptionId}) events:{len(events)}, syncToken:{syncToken}"
                 )
+                if subscriptionId is not None and not isinstance(subscriptionId, int):
+                    raise ValueError(f"subscriptionId should be int: {subscriptionId}")
                 cl.subscriptionId = subscriptionId
                 if subscriptionId is not None:
                     self.subscriptionIds[subscriptionId] = time.time()
@@ -305,12 +311,15 @@ class ConnManager(object):
                         }
                         if sht == 1:
                             ops = shd
+                            if not isinstance(ops, list):
+                                raise ValueError(f"ops should be list: {ops}")
                             self.log(
                                 f"response sync. operations:{len(ops)}",
                                 True,
                             )
                             for op in ops:
-                                self.hook_callback(cl, serviceType, op)
+                                if isinstance(self.hook_callback, Callable):
+                                    self.hook_callback(cl, serviceType, op)
                                 revision = cl.checkAndGetValue(op, "revision", 1)
                                 cl.setRevision(revision)
                         elif sht == 2:
@@ -322,6 +331,8 @@ class ConnManager(object):
                         return
                     elif methodName == "fetchOps":
                         ops = resp
+                        if not isinstance(ops, list):
+                            raise ValueError(f"ops should be list: {ops}")
                         self.log(
                             f"response fetchOps. operations:{len(ops)}",
                             True,
@@ -338,7 +349,8 @@ class ConnManager(object):
                                     cl.globalRev = param2.split("\x1e")[0]
                                     self.log(f"globalRev: {cl.globalRev}", True)
                             cl.setRevision(cl.checkAndGetValue(op, "revision", 1))
-                            self.hook_callback(cl, serviceType, op)
+                            if isinstance(self.hook_callback, Callable):
+                                self.hook_callback(cl, serviceType, op)
                         # LOOP
                         fetch_req_data = {"revision": cl.revision}
                         self.buildAndSendSignOnRequest(
@@ -361,24 +373,29 @@ class ConnManager(object):
         tcp = cl.TCompactProtocol(cl, passProtocol=True)
         if pushFrame.service_type == 3:
             tcp.data = pushFrame.push_payload
-            subscriptionId = tcp.x(False)[1]
+            d: Any = tcp.x(False)
+            subscriptionId = d[1]
             if cl.subscriptionId != subscriptionId:
                 self.log(
                     f"subscriptionId not sync: {cl.subscriptionId} -> {subscriptionId},",
                 )
                 cl.subscriptionId = subscriptionId
-            for event in self.line_client._Poll__fetchMyEvents():
+            for event in self.line_client._Poll__fetchMyEvents():  # type: ignore
                 _type = cl.checkAndGetValue(event, "type", 3)
                 self.log(
                     f"subscriptionId:{subscriptionId}, eventType:{_type}",
                     True,
                 )
-                self.hook_callback(self.line_client, pushFrame.service_type, event)
+                if isinstance(self.hook_callback, Callable):
+                    self.hook_callback(self.line_client, pushFrame.service_type, event)
         elif pushFrame.service_type == 10:
             if pushFrame.push_payload:
                 poa = LegyPushOABot.unwrap(pushFrame.push_payload)
                 if isinstance(poa, LegyPushOABotTyping):
-                    self.hook_callback(self.line_client, pushFrame.service_type, poa)
+                    if isinstance(self.hook_callback, Callable):
+                        self.hook_callback(
+                            self.line_client, pushFrame.service_type, poa
+                        )
                 else:
                     self.log(f"Unknown OaBotPushMessage Type: {poa._type}")
         else:

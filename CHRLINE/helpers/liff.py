@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import json
 import re
+from typing import Optional
 from urllib.parse import urlparse
 
 import requests
@@ -64,7 +65,7 @@ class LiffHelper(BaseHelper):
             "X-Requested-With": "jp.naver.line.android",
         }
         liff_headers["authorization"] = "Bearer %s" % (token)
-        if type(messages) == list:
+        if isinstance(messages, list):
             messages = {"messages": messages}
         else:
             messages = {"messages": [messages]}
@@ -78,7 +79,6 @@ class LiffHelper(BaseHelper):
         elif use_cache:
             return self.sendLiff(to, messages, False, True, liffId)
         return resp.text
-
 
     def tryConsentLiff(self, channelId, on=None, referer=None):
         if on is None:
@@ -120,9 +120,9 @@ class LiffHelper(BaseHelper):
             "X-Line-Application": self.client.APP_NAME,
         }
         if self.client.APP_TYPE == "IOS":
-            hr[
-                "User-Agent"
-            ] = f"Mozilla/5.0 (iPhone; CPU iPhone OS {self.client.SYSTEM_VER} like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Safari Line/{self.client.APP_VER}"
+            hr["User-Agent"] = (
+                f"Mozilla/5.0 (iPhone; CPU iPhone OS {self.client.SYSTEM_VER} like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Safari Line/{self.client.APP_VER}"
+            )
         r = session.get(consentUrl, headers=hr)
         print(r.text)
         if r.status_code == 200:
@@ -159,7 +159,6 @@ class LiffHelper(BaseHelper):
             )
         return False
 
-
     def getAccessToken(self, client_id, redirect_uri, otp, code):
         data = {
             "client_id": str(client_id),  # channel id
@@ -177,3 +176,31 @@ class LiffHelper(BaseHelper):
             "https://access.line.me/v2/oauth/accessToken", data=data, headers=hr
         )
         return r.json()["access_token"]
+
+    def getLiffOtt(self, liffId: str, liffAccessToken: str):
+        url = f"https://api.line.me/liff/v2/apps/{liffId}/ott"
+        hr = {"Authorization": f"Bearer {liffAccessToken}"}
+        r = self.client.server.getContent(url, headers=hr)
+        return r.json()["ott"]
+
+    def getLiffShareTargetPickerPage(self, liffId: str, ott: str, liffAccessToken: str):
+        url = f"https://access.line.me/oauth2/v2.1/liff/shareTargetPicker?liffId={liffId}&ott={ott}"
+        hr = {"Authorization": f"Bearer {liffAccessToken}"}
+        r = self.client.server.getContent(url, headers=hr)
+        return r.text
+
+    def getLiffShareTargetPickerFriendList(
+        self,
+        liffAccessToken: str,
+        csrfToken: str,
+        pageToken: Optional[str] = None,
+        displayCount: int = 200,
+        fetchType="friends",
+    ):
+        url = f"https://access.line.me/oauth2/v2.1/liff/shareTargetPicker/{fetchType}?pageToken={pageToken}&__csrf={csrfToken}&display={displayCount}"
+
+        # TODO: patch cookies.
+
+        hr = {"Authorization": f"Bearer {liffAccessToken}"}
+        r = self.client.server.getContent(url, headers=hr)
+        return r.text

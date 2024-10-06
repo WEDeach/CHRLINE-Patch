@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, ByteString, List, Optional, Union
 import httpx
 
 from ..helper import ChrHelperProtocol
+from ..helpers.bulders.message import Message as WrappedMessage
 from ..serializers.DummyProtocol import DummyThrift
 from .BaseService import (
     BaseServiceHandler,
@@ -157,7 +158,7 @@ class TalkService(ChrHelperProtocol):
 
     def replyMessage(
         self,
-        msgData: Any,
+        msgData: Union[dict, WrappedMessage],
         text: Any,
         contentType: int = 0,
         contentMetadata: Optional[dict] = None,
@@ -174,6 +175,8 @@ class TalkService(ChrHelperProtocol):
         opType = self.client.checkAndGetValue(msgData, "opType")
         if toType == 0 and opType in [26, None]:  # opType for hooks
             to = self.client.checkAndGetValue(msgData, "_from", 1)
+            if isinstance(msgData, WrappedMessage):
+                to = msgData.sender.mid
         elif toType == 7:
             if squareChatMid is None:
                 squareChatMid = self.client.checkAndGetValue(msgData, "squareChatMid")
@@ -225,11 +228,17 @@ class TalkService(ChrHelperProtocol):
         )
 
     def sendMessageWithE2EE(
-        self, to, text, contentType=0, contentMetadata=None, relatedMessageId=None
+        self,
+        to,
+        text,
+        contentType=0,
+        contentMetadata=None,
+        relatedMessageId=None,
+        renewKey=False,
     ):
         if contentMetadata is None:
             contentMetadata = {}
-        chunk = self.client.encryptE2EEMessage(to, text, contentType=contentType)
+        chunk = self.client.encryptE2EEMessage(to, text, contentType=contentType, renewKey=renewKey)
         contentMetadata.update(
             {
                 "e2eeVersion": "2",
@@ -237,9 +246,23 @@ class TalkService(ChrHelperProtocol):
                 "e2eeMark": "2",
             }
         )
-        return self.sendMessageWithChunks(
-            to, chunk, contentType, contentMetadata, relatedMessageId
-        )
+        try:
+            return self.sendMessageWithChunks(
+                to, chunk, contentType, contentMetadata, relatedMessageId
+            )
+        except (LineServiceException, TalkException) as e:
+            e_code = getattr(e, "code")
+            if e_code == 84 and not renewKey:
+                self._logger.warn(f"renew E2EE key for '{to}'...")
+                return self.sendMessageWithE2EE(
+                    to,
+                    text,
+                    contentType,
+                    contentMetadata,
+                    relatedMessageId,
+                    renewKey=True,
+                )
+            raise e
 
     def sendMessageWithChunks(
         self, to, chunk, contentType=0, contentMetadata=None, relatedMessageId=None

@@ -40,9 +40,6 @@ class MessageUserData:
         if self._user_data is None:
             t = self._ref.client.getToType(self.mid)
             if t == 0:
-                # TODO: fetch by version control
-                #       PC      -> getContactsV2
-                #       PHONE   -> getContactsV3
                 c = self._ref.client.getContactsV3([self.mid])
                 if isinstance(c, list) and len(c) > 0:
                     self._user_data = c[0]
@@ -66,25 +63,35 @@ class Message(DummyThrift):
 
     @property
     def from_type(self):
+        """
+        Get from type.
+
+        Just check is self sent:
+        - OpType 25 -> return 2.
+        - OpType 26 -> return 1.
+        """
         if not isinstance(self._ref, DummyThrift):
             raise EOFError
-        if self[3] is not None and self[3] > 0:
+        if self._ref[3] == 26:
             return 1
         return 2
 
     @property
     def sender(self):
         if not isinstance(self._ref, DummyThrift):
-            print(type(self._ref), self._ref)
             raise EOFError
-        t = self.from_type
+        t = 1
+        if self[3] == 0:
+            t = self.from_type
         return MessageUserData(self[t], _ref=self)
 
     @property
     def receiver(self):
         if not isinstance(self._ref, DummyThrift):
             raise EOFError
-        t = 3 - self.from_type
+        t = 2
+        if self[3] == 0:
+            t = 3 - self.from_type
         return MessageUserData(self[t], _ref=self)
     
     @property

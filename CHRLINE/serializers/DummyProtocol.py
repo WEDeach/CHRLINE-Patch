@@ -229,7 +229,7 @@ class DummyThrift:
                 data = getattr(r2, fname)
 
                 def warp(r: DummyThrift, fname, ftype, data, fttypes):
-                    if isinstance(r, Exception):
+                    if isinstance(r.thrift_ins, BaseException):
                         pass
                     elif data is not None:
                         if ftype == 12:

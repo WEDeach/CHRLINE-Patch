@@ -1009,8 +1009,8 @@ class Models(ChrHelperProtocol):
         for field_name in a.field_names:
             field = getattr(a.thrift_ins, field_name)
             if field is not None:
-                if isinstance(field, Exception):
-                    raise field
+                if isinstance(field, DummyThrift) and isinstance(field.thrift_ins, Exception):
+                    raise field.thrift_ins
                 return field
 
         if self.client.checkAndGetValue(a, "val_0") is not None:

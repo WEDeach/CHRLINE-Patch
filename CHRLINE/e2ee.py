@@ -27,6 +27,7 @@ class E2EE(ChrHelperProtocol):
     def __init__(self) -> None:
         self.__logger = self.client.get_logger("E2EE")
         self.__e2ee_key_id = None
+        self.__cache_key = {}
         r = self.client.getE2EEPublicKeys()
         if isinstance(r, list):
             self.__e2ee_key_id = r[0][2]
@@ -40,8 +41,9 @@ class E2EE(ChrHelperProtocol):
             except E2EESelfKeyNotFoundException as e:
                 self.__logger.warn(e.hint)
 
-    def getE2EELocalPublicKey(self, mid, keyId):
+    def getE2EELocalPublicKey(self, mid, keyId, renewKey=False):
         toType = self.client.getToType(mid)
+        cache_key = f"{mid}_{keyId}"
         if toType == 0:
             fd = ".e2eePublicKeys"
             fn = f"key_id_{keyId}.json"
@@ -49,7 +51,11 @@ class E2EE(ChrHelperProtocol):
             if keyId is not None:
                 key = self.client.getCacheData(fd, fn, False)
             if key is None:
-                receiver_key_data = self.client.negotiateE2EEPublicKey(mid)
+                if cache_key not in self.__cache_key or renewKey:
+                    self.__cache_key[cache_key] = self.client.negotiateE2EEPublicKey(
+                        mid
+                    )
+                receiver_key_data = self.__cache_key[cache_key]
                 specVersion = self.client.checkAndGetValue(
                     receiver_key_data, "specVersion", 3
                 )
@@ -60,13 +66,18 @@ class E2EE(ChrHelperProtocol):
                 )
                 receiverKeyId = self.client.checkAndGetValue(publicKey, "keyId", 2)
                 receiverKeyData = self.client.checkAndGetValue(publicKey, "keyData", 4)
-                if receiverKeyId == keyId and receiverKeyData is not None:
+                if receiverKeyData is not None:
                     key = base64.b64encode(receiverKeyData)
-                    self.client.saveCacheData(fd, fn, key.decode(), False)
+                    if receiverKeyId == keyId:
+                        self.client.saveCacheData(fd, fn, key.decode(), False)
+                    elif keyId is None:
+                        return receiver_key_data
+                    else:
+                        raise Exception(
+                            f"E2EE key id-{keyId} not found on {mid}, key id should be {receiverKeyId}"
+                        )
                 else:
-                    raise Exception(
-                        f"E2EE key id-{keyId} not found on {mid}, key id should be {receiverKeyId}"
-                    )
+                    raise Exception(f"E2EE key id-{keyId} not found on {mid}")
         else:
             fd = ".e2eeGroupKeys"
             fn = f"{mid}.json"
@@ -74,20 +85,23 @@ class E2EE(ChrHelperProtocol):
             if keyId is not None and key is not None:
                 keyData = json.loads(key)
                 if keyId != keyData["keyId"]:
-                    self.__logger.info(f"keyId mismatch: {mid}")
+                    self.__logger.warn(f"keyId mismatch: {mid}")
                     key = None
             else:
                 key = None
             if key is None:
                 E2EEGroupSharedKey = None
-                try:
-                    E2EEGroupSharedKey = self.client.getLastE2EEGroupSharedKey(2, mid)
-                except LineServiceException as e:
-                    if e.code == 5:
-                        self.__logger.info(
-                            f"E2EE key not registered on {mid}: {e.message}"
-                        )
-                        E2EEGroupSharedKey = self.tryRegisterE2EEGroupKey(mid)
+                if cache_key not in self.__cache_key or renewKey:
+                    try:
+                        E2EEGroupSharedKey = self.client.getLastE2EEGroupSharedKey(2, mid)
+                    except LineServiceException as e:
+                        if e.code == 5:
+                            self.__logger.info(
+                                f"E2EE key not registered on {mid}: {e.message}"
+                            )
+                            E2EEGroupSharedKey = self.tryRegisterE2EEGroupKey(mid)
+                    self.__cache_key[cache_key] = E2EEGroupSharedKey
+                E2EEGroupSharedKey = self.__cache_key[cache_key]
                 groupKeyId = self.client.checkAndGetValue(
                     E2EEGroupSharedKey, "groupKeyId", 2
                 )
@@ -237,7 +251,7 @@ class E2EE(ChrHelperProtocol):
         return aad
 
     def encryptE2EEMessage(
-        self, to, text, specVersion=2, isCompact=False, contentType=0
+        self, to, text, specVersion=2, isCompact=False, contentType=0, renewKey=False
     ):
         _from = self.client.mid
         selfKeyData = self.client.getE2EESelfKeyDataByKeyId(self.__e2ee_key_id)
@@ -248,7 +262,7 @@ class E2EE(ChrHelperProtocol):
         senderKeyId = selfKeyData["keyId"]
         if self.client.getToType(to) == 0:
             private_key = base64.b64decode(selfKeyData["privKey"])
-            receiver_key_data = self.client.negotiateE2EEPublicKey(to)
+            receiver_key_data = self.getE2EELocalPublicKey(to, None, renewKey)
             specVersion = self.client.checkAndGetValue(
                 receiver_key_data, "specVersion", 3
             )
@@ -259,7 +273,7 @@ class E2EE(ChrHelperProtocol):
             receiverKeyData = self.client.checkAndGetValue(publicKey, "keyData", 4)
             keyData = self.generateSharedSecret(bytes(private_key), receiverKeyData)
         else:
-            groupK: Any = self.getE2EELocalPublicKey(to, None)
+            groupK: Any = self.getE2EELocalPublicKey(to, None, renewKey)
             privK = base64.b64decode(groupK["privKey"])
             pubK = base64.b64decode(selfKeyData["pubKey"])
             receiverKeyId = groupK["keyId"]
@@ -407,22 +421,34 @@ class E2EE(ChrHelperProtocol):
         self.__logger.debug(f"senderKeyId: {senderKeyId}")
         self.__logger.debug(f"receiverKeyId: {receiverKeyId}")
 
-        selfKey = self.client.getE2EESelfKeyDataByKeyId(receiverKeyId)
-        if selfKey is None:
-            raise ValueError("selfKey should not be None.", selfKey)
+        selfKey = self.client.getE2EESelfKeyData(self.client.mid)
         privK = base64.b64decode(selfKey["privKey"])
         if toType == 0:
-            pubK = self.getE2EELocalPublicKey(to, senderKeyId)
+            # patch to use correct key by id
+            selfKey = self.client.getE2EESelfKeyDataByKeyId(receiverKeyId)
+            if selfKey is None:
+                raise ValueError(f"selfKey should not be None. KeyId={receiverKeyId}")
+            privK = base64.b64decode(selfKey["privKey"])
+            pubK = self.getE2EELocalPublicKey(_from, senderKeyId)
         else:
+            selfKey = self.client.getE2EESelfKeyDataByKeyId(self.__e2ee_key_id)
+            if selfKey is None:
+                raise ValueError(f"selfKey should not be None. KeyId={receiverKeyId}")
             groupK: Any = self.getE2EELocalPublicKey(to, receiverKeyId)
             privK = base64.b64decode(groupK["privKey"])
             pubK = base64.b64decode(selfKey["pubKey"])
             if _from != self.client.mid:
-                pubK = self.getE2EELocalPublicKey(_from, receiverKeyId)
+                pubK = self.getE2EELocalPublicKey(_from, senderKeyId)
 
         if specVersion == "2":
             decrypted = self.decryptE2EEMessageV2(
-                _from, to, chunks, privK, pubK, specVersion, contentType
+                messageObj[2],
+                messageObj[1],
+                chunks,
+                privK,
+                pubK,
+                specVersion,
+                contentType,
             )
         else:
             decrypted = self.decryptE2EEMessageV1(chunks, privK, pubK)
@@ -545,8 +571,12 @@ class E2EE(ChrHelperProtocol):
 
         aesKey = self.generateSharedSecret(privK, pubK)
         gcmKey = self.getSHA256Sum(aesKey, salt, b"Key")
+        _senderKeyId = senderKeyId
+        _receiverKeyId = receiverKeyId
+        to2 = to
+        _from2 = _from
         aad = self.generateAAD(
-            to, _from, senderKeyId, receiverKeyId, specVersion, contentType
+            to2, _from2, _senderKeyId, _receiverKeyId, specVersion, contentType
         )
 
         aesgcm = AESGCM(gcmKey)

@@ -156,13 +156,13 @@ class CHRLINE(
             )
         __profile_err = self.checkAndGetValue(self.profile, "error")
         if __profile_err is not None:
-            self.log(f"登入失敗... {__profile_err}")
+            self.log(f"Login failed... {__profile_err}")
             b = None
             try:
                 for b in self.requestSQR(False):
                     print(b)
             except Exception as _:
-                raise Exception(f"登入失敗... {__profile_err}")
+                raise Exception(f"Login failed... {__profile_err}")
             if b is not None:
                 self.handleNextToken(b)
             return self.initAll()

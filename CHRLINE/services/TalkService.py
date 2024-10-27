@@ -238,7 +238,9 @@ class TalkService(ChrHelperProtocol):
     ):
         if contentMetadata is None:
             contentMetadata = {}
-        chunk = self.client.encryptE2EEMessage(to, text, contentType=contentType, renewKey=renewKey)
+        chunk = self.client.encryptE2EEMessage(
+            to, text, contentType=contentType, renewKey=renewKey
+        )
         contentMetadata.update(
             {
                 "e2eeVersion": "2",
@@ -647,29 +649,33 @@ class TalkService(ChrHelperProtocol):
         chat = [
             [11, 2, chatMid],
         ]
-        for k, v in chat_type.items():
-            v2 = chatSet.get(k)
-            if v2 is not None:
-                chat.append([v, k, v2])
-        extra = chatSet.get(8)
-        if extra is not None:
-            groupExtra = extra.get(1)
-            peerExtra = extra.get(2)
-            chat_extra = []
-            if groupExtra is not None:
-                for k, v in extra_group_type.items():
-                    v2 = groupExtra.get(k)
-                    if v2 is not None:
-                        if isinstance(v, int):
-                            chat_extra.append([v, k, v2])
-                        else:
-                            v3, v4 = v
-                            v5 = [_v for _v in v4] + [v2]
-                            chat_extra.append([v3, k, v5])
-                chat_extra = [[12, 1, chat_extra]]
-            else:
-                raise NotImplementedError
-            chat.append([12, 8, chat_extra])
+        if isinstance(chatSet, DummyThrift):
+            chat = chatSet
+        else:
+            # if chatSet use dict only
+            for k, v in chat_type.items():
+                v2 = chatSet.get(k)
+                if v2 is not None:
+                    chat.append([v, k, v2])
+            extra = chatSet.get(8)
+            if extra is not None:
+                groupExtra = extra.get(1)
+                peerExtra = extra.get(2)
+                chat_extra = []
+                if groupExtra is not None:
+                    for k, v in extra_group_type.items():
+                        v2 = groupExtra.get(k)
+                        if v2 is not None:
+                            if isinstance(v, int):
+                                chat_extra.append([v, k, v2])
+                            else:
+                                v3, v4 = v
+                                v5 = [_v for _v in v4] + [v2]
+                                chat_extra.append([v3, k, v5])
+                    chat_extra = [[12, 1, chat_extra]]
+                else:
+                    raise NotImplementedError
+                chat.append([12, 8, chat_extra])
         params = [
             [8, 1, self.client.getCurrReqId()],
             [12, 2, chat],

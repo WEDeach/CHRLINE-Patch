@@ -18,6 +18,14 @@ class DummyProtocolData:
     def addSubType(self, type):
         self.subType.append(type)
 
+    def __eq__(self, __o: object) -> bool:
+        if isinstance(__o, __class__):
+            return super().__eq__(__o)
+        return self.data == __o
+
+    def __hash__(self):
+        return hash(self.data)
+
     def __repr__(self):
         L = ["%s=%r" % (key, value) for key, value in self.__dict__.items()]
         return "%s(%s)" % (self.__class__.__name__, ", ".join(L))
@@ -47,6 +55,7 @@ class DummyThrift:
         cl: Optional["CHRLINE"] = None,
         **kwargs,
     ):
+        self.__field_map__ = {}
         if name is not None:
             self.__name__ = name
         if ins is not None:
@@ -214,6 +223,13 @@ class DummyThrift:
                         del r[rk]
         return r
 
+    def dd_loc(self):
+        r: Dict[str, Any] = {}
+        for key, rv in self.__dict__.items():
+            if not key.startswith("val_") and not key.startswith("_"):
+                r[key] = rv
+        return r
+
     def read(self, iprot):
         r = self.thrift_ins
         read_org = getattr(r, "read")
@@ -263,7 +279,7 @@ class DummyThrift:
 
                 def warp_struct(r: DummyThrift, rd):
                     r2 = self.wrap_thrift(self.client, rd, self.is_dummy)
-                    r2._ref = r
+                    r2.set_ref(r)
                     warp_spec(r2, rd.thrift_spec)
                     return r2
 
@@ -284,6 +300,67 @@ class DummyThrift:
         r.is_dummy = isDummy
         if isinstance(thrift_ins, BaseException):
             r.is_raw = True
+        return r
+    
+    @classmethod
+    def set_ref(cls, ref: "DummyThrift"):
+        cls._ref = ref
+
+    def dd_specs(self):
+        r: Optional[tuple] = None
+        r2 = self.thrift_ins
+        thrift_spec: Optional[Tuple[Any]] = getattr(r2, "thrift_spec", None)
+        if thrift_spec is not None:
+            return thrift_spec
+        if self.__field_map__:
+            r = ()
+            for fk, fv in self.__field_map__.items():
+                if isinstance(fv, DummyProtocolData):
+                    ft = fv.type
+                    fts = None
+                    if ft == 11:
+                        fts = 'UTF8'
+                    elif ft == 13:
+                        fts = (fv.subType[0], None, fv.subType[1], None, False,)
+                    elif ft in [14, 15]:
+                        fts = (fv.subType[0], None, False,)
+                    r = r + (
+                        (fv.id, fv.type, '', fts, None,),
+                    )
+        return r
+
+    def dd_slist(self):
+        r = []
+        specs = self.dd_specs()
+        if specs is not None:
+            for spec in specs:
+                if spec is None:
+                    continue
+                fid, ftype, fname, fts, _ = spec
+                data = self.get(fid)
+                if data:
+                    def dd(t, d):
+                        if t == 12:
+                            if isinstance(d, DummyThrift):
+                                return d.dd_slist()
+                            if isinstance(d, list):
+                                dl = []
+                                for d2 in d:
+                                    if isinstance(d2, DummyThrift):
+                                        dl.append(d2.dd_slist())
+                                    else:
+                                        dl.append(d2)
+                                return dl
+                        elif t == 13:
+                            if fts is None:
+                                raise ValueError
+                            return [fts[0], fts[2], d]
+                        elif t in [14, 15]:
+                            if fts is None:
+                                raise ValueError
+                            return [fts[0], dd(fts[0], d)]
+                        return d
+                    r.append([ftype, fid, dd(ftype, data)])
         return r
 
     def __getitem__(self, index):
@@ -317,6 +394,13 @@ class DummyThrift:
         return super().__getattribute__(name)
 
     def __setattr__(self, k, v):
+        _k = k
+        if isinstance(k, DummyProtocolData):
+            _k = k
+            k = k.data
+        if isinstance(v, DummyProtocolData):
+            self.__field_map__[_k] = v
+            v = v.data
         if not self.sync_wrapper:
             return super().__setattr__(k, v)
         k2: Union[int, None] = None
@@ -394,12 +478,13 @@ class DummyThrift:
         super().__setattr__(k, v)
 
     def __repr__(self):
-        d = self.__dict__
+        d = self.dd()
         if self.is_dummy:
             return str(self.dd())
         if self.thrift_ins is not None:
             d = self.thrift_ins.__dict__
             d.update(self.dd_diff())
+            d.update(self.dd_loc())
         L = ["%s=%r" % (key, value) for key, value in d.items()]
         return "%s(%s)" % (self.__name__, ", ".join(L))
 

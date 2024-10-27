@@ -323,6 +323,8 @@ class Models(ChrHelperProtocol):
             _data = param[2]
             if _data is None:
                 continue
+            if isinstance(_data, DummyThrift):
+                _data = _data.dd_slist()
             if _type == 13:
                 if _data[2] is None:
                     continue
@@ -399,7 +401,7 @@ class Models(ChrHelperProtocol):
     def postPackDataAndGetUnpackRespData(
         self,
         path: str,
-        bdata: Union[bytes, DummyProtocolSerializer, list],
+        bdata: Union[bytes, DummyProtocolSerializer, list, dict],
         ttype: int = 3,
         encType: Optional[int] = None,
         headers: Optional[dict] = None,
@@ -456,7 +458,7 @@ class Models(ChrHelperProtocol):
             True,
         )
         self.client.log(
-            f"--> {bdata.hex()}",
+            f"--> {bdata.hex()[:50]}",
             True,
         )
         if encType == 0:
@@ -519,7 +521,7 @@ class Models(ChrHelperProtocol):
         else:
             raise Exception(f"Unknown encType: {encType}")
         self.client.log(f"<--  {res.status_code}", True)
-        self.client.log(f"{data.hex()}", True)
+        self.client.log(f"{data.hex()[:50]}", True)
         if res.status_code in expectedRespCode:
             if (
                 res.headers.get("x-lc") is not None
@@ -995,10 +997,10 @@ class Models(ChrHelperProtocol):
             r = (
                 _genFunc(c, refs, b)
                 if type(c.data) in [list, dict]
-                else setattr(refs, f"val_{c.id}", c.data)
+                else setattr(refs, f"val_{c.id}", c)
             )
             return r
-
+        
         if data.data is not None:
             b(data.data, a)
             check_miss(a)

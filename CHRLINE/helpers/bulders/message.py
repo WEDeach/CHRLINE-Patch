@@ -1,3 +1,7 @@
+import base64
+import json
+from typing import Optional
+
 from ...serializers.DummyProtocol import DummyThrift
 
 MessageStruct = [
@@ -49,7 +53,6 @@ class MessageUserData:
                 self._user_data = c
         return self._user_data
 
-
     @property
     def name(self):
         t = self._ref.client.getToType(self.mid)
@@ -58,8 +61,20 @@ class MessageUserData:
         return "NONAME"
 
 
-
 class Message(DummyThrift):
+
+    def __new__(cls, *args, **kwargs):
+        ins = kwargs["ins"]
+        if isinstance(ins, dict):
+            contentType = ins.get(15)
+        else:
+            contentType = getattr(ins, "contentType")
+        if contentType == 0:
+            return super().__new__(TextMessage)
+        elif contentType in [1, 2, 3, 14]:
+            return super().__new__(MediaMessage)
+        else:
+            return super().__new__(cls)
 
     @property
     def from_type(self):
@@ -93,7 +108,20 @@ class Message(DummyThrift):
         if self[3] == 0:
             t = 3 - self.from_type
         return MessageUserData(self[t], _ref=self)
-    
+
+    def me(self):
+        if self[3] in [0, 1, 2]:
+            return MessageUserData(self.client.mid, _ref=self)
+        square_chat_mid = self[2]
+        mid = self.client.getMySquareMidByChatMid(square_chat_mid)
+        return MessageUserData(mid, _ref=self)
+
+    def is_sender(self, mid: str):
+        return self[1] == mid
+
+
+class TextMessage(Message):
+
     @property
     def text(self):
         t = self[10]
@@ -108,5 +136,55 @@ class Message(DummyThrift):
     def isE2EE(self):
         return isinstance(self[20], list) and len(self[20]) > 0
 
-    def is_sender(self, mid: str):
-        return self.sender_mid == mid
+
+class MediaMessage(Message):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.url: Optional[str] = None
+
+    @property
+    def isE2EE(self):
+        return isinstance(self[20], list) and len(self[20]) > 0
+
+    def get_url(self):
+        raise NotImplementedError
+
+    def get_object_id(self) -> str:
+        if self.isE2EE:
+            return self[18]["OID"]
+        return self[4]
+
+    def get_service_code(self) -> str:
+        t = self[3]
+        if t in [0, 1, 2]:
+            return "talk"
+        elif t == 4:
+            return "g2"
+        raise ValueError(f"Unknown SID: toType={t}")
+
+    def get_space_id(self) -> str:
+        if self.isE2EE:
+            return self[18]["SID"]
+        return "m"
+
+    def download(self, savePath: Optional[str] = None):
+        oid = self.get_object_id()
+        svc = self.get_service_code()
+        sid = self.get_space_id()
+        hrs = {}
+        if self.isE2EE:
+            params = [[11, 4, self[4]]]
+            r = self.client.generateDummyProtocolField(params, 3) + [0]
+            r = base64.b64encode(bytes(r)).decode()
+            meta = base64.b64encode(json.dumps({"message": r}).encode()).decode()
+            hrs = {"X-Talk-Meta": meta}
+            enc_obj = self.client.downloadObjectForService(
+                oid, savePath, f"{svc}/{sid}", additionalHeaders=hrs
+            )
+            keyMaterial = self.client.decryptE2EEMessage(self)["keyMaterial"]
+            return self.client.decryptByKeyMaterial(enc_obj, keyMaterial)
+        return self.client.downloadObjectForService(
+            oid, savePath, f"{svc}/{sid}", additionalHeaders=hrs
+        )

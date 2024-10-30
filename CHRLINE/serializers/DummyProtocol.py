@@ -156,6 +156,10 @@ class DummyThrift:
     def get(self):
         return self.__getitem__
 
+    def check_fid(self, key: int, default=None):
+        r = self.dd()
+        return r[key] if key in r else default
+
     @property
     def __ins_name__(self):
         ins = self.thrift_ins
@@ -301,10 +305,9 @@ class DummyThrift:
         if isinstance(thrift_ins, BaseException):
             r.is_raw = True
         return r
-    
-    @classmethod
-    def set_ref(cls, ref: "DummyThrift"):
-        cls._ref = ref
+
+    def set_ref(self, ref: "DummyThrift"):
+        self._ref = ref
 
     def dd_specs(self):
         r: Optional[tuple] = None
@@ -319,13 +322,29 @@ class DummyThrift:
                     ft = fv.type
                     fts = None
                     if ft == 11:
-                        fts = 'UTF8'
+                        fts = "UTF8"
                     elif ft == 13:
-                        fts = (fv.subType[0], None, fv.subType[1], None, False,)
+                        fts = (
+                            fv.subType[0],
+                            None,
+                            fv.subType[1],
+                            None,
+                            False,
+                        )
                     elif ft in [14, 15]:
-                        fts = (fv.subType[0], None, False,)
+                        fts = (
+                            fv.subType[0],
+                            None,
+                            False,
+                        )
                     r = r + (
-                        (fv.id, fv.type, '', fts, None,),
+                        (
+                            fv.id,
+                            fv.type,
+                            "",
+                            fts,
+                            None,
+                        ),
                     )
         return r
 
@@ -339,6 +358,7 @@ class DummyThrift:
                 fid, ftype, fname, fts, _ = spec
                 data = self.get(fid)
                 if data:
+
                     def dd(t, d):
                         if t == 12:
                             if isinstance(d, DummyThrift):
@@ -360,6 +380,7 @@ class DummyThrift:
                                 raise ValueError
                             return [fts[0], dd(fts[0], d)]
                         return d
+
                     r.append([ftype, fid, dd(ftype, data)])
         return r
 
@@ -456,8 +477,12 @@ class DummyThrift:
                                     if v in vt._value2member_map_:
                                         v = vt(v)
                                     else:
-                                        log = self.client.get_logger("DUMMY").overload("THRIFT")
-                                        log.warn(f"Enum '{_r.__class__.__name__}' missing value: {v}")
+                                        log = self.client.get_logger("DUMMY").overload(
+                                            "THRIFT"
+                                        )
+                                        log.warn(
+                                            f"Enum '{_r.__class__.__name__}' missing value: {v}"
+                                        )
                                 if r1 is not None:
                                     object.__setattr__(r1, r2, v)
                                 return v
@@ -480,7 +505,8 @@ class DummyThrift:
     def __repr__(self):
         d = self.dd()
         if self.is_dummy:
-            return str(self.dd())
+            d.update(self.dd_loc())
+            return str(d)
         if self.thrift_ins is not None:
             d = self.thrift_ins.__dict__
             d.update(self.dd_diff())

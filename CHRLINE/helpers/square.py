@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
+from typing import Any
+
 from .base import BaseHelper
+
 
 class SquareHelper(BaseHelper):
     def __init__(self):
@@ -13,3 +16,11 @@ class SquareHelper(BaseHelper):
                 return False
         else:
             raise Exception("Not support Square")
+
+    def getSquareMidByChatMid(self, squareChatMid: str):
+        square_chat: Any = self.client.getSquareChat(squareChatMid)
+        return square_chat[1][2]
+
+    def getMySquareMidByChatMid(self, squareChatMid: str):
+        square_chat: Any = self.client.getSquareChat(squareChatMid)
+        return square_chat[2][1]

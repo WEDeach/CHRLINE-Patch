@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Author: YinMo
-Version: 2.2.4
+Version: 2.3.2
 Description: support pm & group chat and encrypted-media!
 """
 import base64
@@ -93,7 +93,9 @@ class E2EE(ChrHelperProtocol):
                 E2EEGroupSharedKey = None
                 if cache_key not in self.__cache_key or renewKey:
                     try:
-                        E2EEGroupSharedKey = self.client.getLastE2EEGroupSharedKey(2, mid)
+                        E2EEGroupSharedKey = self.client.getLastE2EEGroupSharedKey(
+                            2, mid
+                        )
                     except LineServiceException as e:
                         if e.code == 5:
                             self.__logger.info(
@@ -214,6 +216,14 @@ class E2EE(ChrHelperProtocol):
     def _decryptAESCTR(self, aes_key, nonce, data):
         aes = AES.new(aes_key, AES.MODE_CTR, nonce=nonce)
         return aes.decrypt(data)
+
+    def _decryptAESGCMSIV(
+        self, gtg: bytes, nonce: bytes, data: bytes, aad: Optional[bytes] = None
+    ):
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCMSIV
+
+        aes = AESGCMSIV(gtg)
+        return aes.decrypt(nonce, data, aad)
 
     def decryptKeyChain(self, publicKey, privateKey, encryptedKeyChain):
         shared_secret = self.generateSharedSecret(privateKey, publicKey)
@@ -398,10 +408,16 @@ class E2EE(ChrHelperProtocol):
         return aesgcm.encrypt(nonce, data, aad)
 
     def decryptE2EETextMessage(self, messageObj, isSelf=True):
+        return self.decryptE2EEMessage(messageObj, isSelf).get("text", "")
+
+    def decryptE2EELocationMessage(self, messageObj, isSelf=True):
+        return self.decryptE2EEMessage(messageObj, isSelf).get("location", None)
+
+    def decryptE2EEMessage(self, messageObj, isSelf=True) -> dict:
         _from = messageObj.sender.mid
         to = messageObj.receiver.mid
         if _from is None or to is None:
-            return None
+            raise ValueError
         toType = self.client.checkAndGetValue(messageObj, "toType", 3)
         metadata = self.client.checkAndGetValue(messageObj, "contentMetadata", 18)
         if metadata is None:
@@ -449,92 +465,6 @@ class E2EE(ChrHelperProtocol):
                 pubK,
                 specVersion,
                 contentType,
-            )
-        else:
-            decrypted = self.decryptE2EEMessageV1(chunks, privK, pubK)
-        return decrypted.get("text", "")
-
-    def decryptE2EELocationMessage(self, messageObj, isSelf=True):
-        _from = self.client.checkAndGetValue(messageObj, "_from", 1)
-        to = self.client.checkAndGetValue(messageObj, "to", 2)
-        toType = self.client.checkAndGetValue(messageObj, "toType", 3)
-        metadata = self.client.checkAndGetValue(messageObj, "contentMetadata", 18)
-        if metadata is None:
-            metadata = {}
-        specVersion = metadata.get("e2eeVersion", "2")
-        contentType = self.client.checkAndGetValue(messageObj, "contentType", 15)
-        if contentType is None:
-            raise ValueError("contentType should not be None.")
-        chunks = self.client.checkAndGetValue(messageObj, "chunks", 20)
-        if chunks is None:
-            raise ValueError("chunks should not be None.")
-        for i in range(len(chunks)):
-            if isinstance(chunks[i], str):
-                chunks[i] = chunks[i].encode()
-        senderKeyId = byte2int(chunks[3])
-        receiverKeyId = byte2int(chunks[4])
-        self.__logger.debug(f"senderKeyId: {senderKeyId}")
-        self.__logger.debug(f"receiverKeyId: {receiverKeyId}")
-
-        selfKey = self.client.getE2EESelfKeyData(self.client.mid)
-        privK = base64.b64decode(selfKey["privKey"])
-        if toType == 0:
-            pubK = self.getE2EELocalPublicKey(
-                to, receiverKeyId if isSelf else senderKeyId
-            )
-        else:
-            groupK: Any = self.getE2EELocalPublicKey(to, receiverKeyId)
-            privK = base64.b64decode(groupK["privKey"])
-            pubK = base64.b64decode(selfKey["pubKey"])
-            if _from != self.client.mid:
-                pubK = self.getE2EELocalPublicKey(_from, senderKeyId)
-
-        if specVersion == "2":
-            decrypted = self.decryptE2EEMessageV2(
-                to, _from, chunks, privK, pubK, specVersion, contentType
-            )
-        else:
-            decrypted = self.decryptE2EEMessageV1(chunks, privK, pubK)
-        return decrypted.get("location", None)
-
-    def decryptE2EEMessage(self, messageObj, isSelf=True) -> dict:
-        _from = self.client.checkAndGetValue(messageObj, "_from", 1)
-        to = self.client.checkAndGetValue(messageObj, "to", 2)
-        toType = self.client.checkAndGetValue(messageObj, "toType", 3)
-        metadata = self.client.checkAndGetValue(messageObj, "contentMetadata", 18)
-        if metadata is None:
-            metadata = {}
-        specVersion = metadata.get("e2eeVersion", "2")
-        contentType = self.client.checkAndGetValue(messageObj, "contentType", 15)
-        if contentType is None:
-            raise ValueError("contentType should not be None.")
-        chunks = self.client.checkAndGetValue(messageObj, "chunks", 20)
-        if chunks is None:
-            raise ValueError("chunks should not be None.")
-        for i in range(len(chunks)):
-            if isinstance(chunks[i], str):
-                chunks[i] = chunks[i].encode()
-        senderKeyId = byte2int(chunks[3])
-        receiverKeyId = byte2int(chunks[4])
-        self.__logger.debug(f"senderKeyId: {senderKeyId}")
-        self.__logger.debug(f"receiverKeyId: {receiverKeyId}")
-
-        selfKey = self.client.getE2EESelfKeyData(self.client.mid)
-        privK = base64.b64decode(selfKey["privKey"])
-        if toType == 0:
-            pubK = self.getE2EELocalPublicKey(
-                to, receiverKeyId if isSelf else senderKeyId
-            )
-        else:
-            groupK: Any = self.getE2EELocalPublicKey(to, receiverKeyId)
-            privK = base64.b64decode(groupK["privKey"])
-            pubK = base64.b64decode(selfKey["pubKey"])
-            if _from != self.client.mid:
-                pubK = self.getE2EELocalPublicKey(_from, senderKeyId)
-
-        if specVersion == "2":
-            decrypted = self.decryptE2EEMessageV2(
-                to, _from, chunks, privK, pubK, specVersion, contentType
             )
         else:
             decrypted = self.decryptE2EEMessageV1(chunks, privK, pubK)
@@ -617,6 +547,18 @@ class E2EE(ChrHelperProtocol):
             keyMateria = base64.b64decode(keyMateria)
         keys = self.deriveKeyMaterial(keyMateria)
         return self._decryptAESCTR(keys["encKey"], keys["nonce"], raw_data)
+
+    def decryptEncryptedQrIdentifier(
+        self, encryptedQrIdentifier: bytes, privateKey: bytes, publicKey: bytes
+    ):
+        """Decrypt encrypted qr identifier."""
+        shared_secret = self.generateSharedSecret(privateKey, publicKey)
+        nonce_size = 12
+        return self._decryptAESGCMSIV(
+            shared_secret,
+            encryptedQrIdentifier[:nonce_size],
+            encryptedQrIdentifier[nonce_size:],
+        )
 
 
 def byte2int(t):

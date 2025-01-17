@@ -25,6 +25,7 @@ from .services.LiffService import LiffService
 from .services.LoginService import LoginService
 from .services.MultiProfileService import MultiProfileService
 from .services.PremiumFontService import PremiumFontService
+from .services.PremiumStatusService import PremiumStatusService
 from .services.PrimaryAccountInitService import PrimaryAccountInitService
 from .services.PrimaryAccountSmartSwitchRestorePreparationService import (
     PrimaryAccountSmartSwitchRestorePreparationService,
@@ -98,7 +99,7 @@ class API(
             "content-type": "application/x-thrift; protocol=TBINARY",
             "x-lal": self.LINE_LANGUAGE,
             "x-lhm": "POST",
-            "X-Line-Chrome-Version": "3.1.0",
+            "X-Line-Chrome-Version": "3.6.0",
         }
         self.log(f"Use User-Agent: {self.USER_AGENT}")
         if forwardedIp is not None:
@@ -138,6 +139,7 @@ class API(
         PremiumFontService.__init__(self)
         self.s_smart_switch = PrimaryAccountSmartSwitchRestorePreparationService(self)
         self.s_multi_profile = MultiProfileService(self.client)
+        self.s_premium_status = PremiumStatusService(self.client)
 
     def requestPwlessLogin(self, phone, pw):
         pwless_code = self.checkAndGetValue(self.createPwlessSession(phone), 1, "val_1")

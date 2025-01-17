@@ -5,7 +5,6 @@ import os
 import struct
 import time
 from base64 import b64encode
-from enum import Enum
 from hashlib import md5
 from typing import Any, Optional, Union
 from urllib.parse import quote
@@ -29,14 +28,11 @@ from .serializers.DummyProtocol import (
     DummyProtocolSerializer,
     DummyThrift,
 )
-from .utils.patchs import enum_missing
-
-if Enum:
-    setattr(Enum, "_missing_", enum_missing)
 from .services.thrift import *
 from .services.thrift.ap.TCompactProtocol import TCompactProtocol as tcProtocol
 from .services.thrift.ttypes import TalkException
 from .timeline import Timeline
+from .utils.patchs import p_patch_all
 
 
 class Models(ChrHelperProtocol):
@@ -59,6 +55,7 @@ class Models(ChrHelperProtocol):
 
         # Init 3rd Models
         from .dyher.connManager import ConnManager
+        p_patch_all()
 
         self.legyPushers = ConnManager(self.client)
 
@@ -1080,7 +1077,7 @@ def doLoopReq(
     except httpx.ReadError as ex:
         doRetry = True
         e = ex
-    except httpx.ConnectError as ex:
+    except (httpx.ConnectError or requests.exceptions.ConnectionError) as ex:
         currCount -= 1
         retryTimeDelay += 1
         doRetry = True

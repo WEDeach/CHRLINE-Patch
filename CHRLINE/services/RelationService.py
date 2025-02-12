@@ -154,3 +154,15 @@ class RelationService(ChrHelperProtocol):
         ]
         params = [[12, 1, params]]
         return self.__sender.send(METHOD_NAME, params)
+
+    def getTargetProfileNotice(
+        self,
+        targetUserMid: str
+    ):
+        """Get target profile notice."""
+        METHOD_NAME = "getTargetProfileNotice"
+        params = [
+            [11, 1, targetUserMid],
+        ]
+        params = [[12, 1, params]]
+        return self.__sender.send(METHOD_NAME, params)

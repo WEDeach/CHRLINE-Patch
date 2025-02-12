@@ -259,6 +259,18 @@ class CallService(ChrHelperProtocol):
         params = [[12, 2, params]]
         return self.__sender.send(METHOD_NAME, params)
 
+    def startPhotoboothForMediaCall(
+        self,
+        chatMid: str,
+    ):
+        """Start photobooth for media call."""
+        METHOD_NAME = "startPhotoboothForMediaCall"
+        params = [
+            [11, 1, chatMid],
+        ]
+        params = [[12, 2, params]]
+        return self.__sender.send(METHOD_NAME, params)
+
     def usePhotoboothTicket(
         self,
         chatMid: str,
@@ -279,5 +291,22 @@ class CallService(ChrHelperProtocol):
         """Get photobooth balance."""
         METHOD_NAME = "getPhotoboothBalance"
         params = []
+        params = [[12, 2, params]]
+        return self.__sender.send(METHOD_NAME, params)
+
+    def getMediaCall(self, chatMid: str):
+        """Get media call."""
+        METHOD_NAME = "getMediaCall"
+        params = [[11, 1, chatMid]]
+        params = [[12, 2, params]]
+        return self.__sender.send(METHOD_NAME, params)
+
+    def acquireMediaCallRoute(self, toMid: str, mediaType: int = 1):
+        """Acquire media call route."""
+        METHOD_NAME = "acquireMediaCallRoute"
+        params = [
+            [11, 1, toMid],
+            [8, 2, mediaType],
+        ]
         params = [[12, 2, params]]
         return self.__sender.send(METHOD_NAME, params)

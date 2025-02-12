@@ -177,7 +177,7 @@ class Config(object):
             self.APP_VER = "13.11.0"
             self.SYSTEM_NAME = "Watch OS"
         elif type == "WEAROS":
-            self.APP_VER = "13.4.1"
+            self.APP_VER = "1.4.1"
             self.SYSTEM_NAME = "Wear OS"
         elif type == "OPENCHAT_PLUS":
             pass

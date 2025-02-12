@@ -36,11 +36,13 @@ from .services.PrimaryQrCodeMigrationLongPollingService import (
 from .services.PrimaryQrCodeMigrationPreparationService import (
     PrimaryQrCodeMigrationPreparationService,
 )
+from .services.PrimarySeamlessLoginService import PrimarySeamlessLoginService
 from .services.RelationService import RelationService
 from .services.SecondaryPwlessLoginPermitNoticeService import (
     SecondaryPwlessLoginPermitNoticeService,
 )
 from .services.SecondaryPwlessLoginService import SecondaryPwlessLoginService
+from .services.SecondarySeamlessLoginService import SecondarySeamlessLoginService
 from .services.SettingsService import SettingsService
 from .services.ShopCollectionService import ShopCollectionService
 from .services.ShopService import ShopService
@@ -140,6 +142,8 @@ class API(
         self.s_smart_switch = PrimaryAccountSmartSwitchRestorePreparationService(self)
         self.s_multi_profile = MultiProfileService(self.client)
         self.s_premium_status = PremiumStatusService(self.client)
+        self.s_seamless = PrimarySeamlessLoginService(self.client)
+        self.s_seamless_sec = SecondarySeamlessLoginService(self.client)
 
     def requestPwlessLogin(self, phone, pw):
         pwless_code = self.checkAndGetValue(self.createPwlessSession(phone), 1, "val_1")

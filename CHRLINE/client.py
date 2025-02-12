@@ -76,13 +76,11 @@ class CHRLINE(
             Set whether not to login
         encType: `int`
             Encryption for requests.
+            - 0: no encryption.
+            - 1: legy encryption
 
-            - 0:
-                no encryption.
-            - 1:
-                legy encryption.
         debug: `bool`
-            * Developer options *
+            *Developer options*
             For view some params and logs
         customDataId: `str`
             Special the customData id

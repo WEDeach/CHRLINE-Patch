@@ -692,7 +692,7 @@ class TalkService(ChrHelperProtocol):
 
     def updateChatPreventedUrl(self, chatMid: str, bT: bool):
         """Update chat prevented url."""
-        return self.updateChat(chatMid, {8: {2: bT}}, 4)
+        return self.updateChat(chatMid, {8: {1: {2: bT}}}, 4)
 
     def getGroupIdsJoined(self):
         """
@@ -783,7 +783,7 @@ class TalkService(ChrHelperProtocol):
                         2,
                         [
                             [10, 1, deliveredTime],
-                            [10, 1, messageId],
+                            [10, 2, messageId],
                         ],
                     ],
                     [8, 3, messagesCount],

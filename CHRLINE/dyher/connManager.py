@@ -178,6 +178,7 @@ class ConnManager(object):
                 methodName = "sync"
                 _req = self.buildServiceRequest(serviceName, methodName, **kwargs)
             else:
+                self.log("Using `fetchOps` for Talk.")
                 _req = self.buildFetchOpsRequest(**kwargs)
         elif serviceType == 6:
             #

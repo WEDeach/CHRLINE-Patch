@@ -384,6 +384,11 @@ class DummyThrift:
                     r.append([ftype, fid, dd(ftype, data)])
         return r
 
+    def __json__(self):
+        d = self.dd()
+        d.update(self.dd_loc())
+        return d
+    
     def __getitem__(self, index):
         # PRIORITY: thrift > dummy
         r = self.thrift_ins

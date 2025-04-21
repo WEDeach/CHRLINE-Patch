@@ -61,7 +61,7 @@ class SysHelper(BaseHelper):
     @staticmethod
     def checkAndGetValue(value, *args):
         for arg in args:
-            if type(value) == dict:
+            if isinstance(value, dict):
                 if arg in value:
                     return value[arg]
             else:

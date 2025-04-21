@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
-import time
-import json
 import uuid
+
 
 class PrimaryAccountInitService(object):
 

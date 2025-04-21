@@ -408,24 +408,33 @@ class API(
                 c = self.createPinCode(sqr)
                 yield f"請輸入pincode: {c}"
                 self.checkPinCodeVerified(sqr)
-            e = self.qrCodeLoginV2ForSecure(
-                sqr, self.MODEL_NAME, self.USERDOMAIN, nonce
-            )
-            self.log(e, log4Debug)
-            cert = self.checkAndGetValue(e, "certificate", 1)
-            self.saveSqrCert(cert)
-            tokenV3Info = self.checkAndGetValue(e, "tokenV3IssueResult", 3)
-            _mid = self.checkAndGetValue(e, "mid", 4)
-            metadata = self.checkAndGetValue(e, "metaData", 10)
-            self.decodeE2EEKeyV1(metadata, secret, _mid)
-            authToken = self.checkAndGetValue(tokenV3Info, "accessToken", 1)
-            refreshToken = self.checkAndGetValue(tokenV3Info, "refreshToken", 2)
-            self.saveCacheData(".refreshToken", authToken, refreshToken)
-            print(f"AuthToken: {authToken}")
-            print(f"RefreshToken: {refreshToken}")
-            if isSelf:
-                self.authToken = authToken
-            yield authToken
+            try:
+                e = self.qrCodeLoginV2ForSecure(
+                    sqr, self.MODEL_NAME, self.USERDOMAIN, nonce
+                )
+                self.log(e, log4Debug)
+                cert = self.checkAndGetValue(e, "certificate", 1)
+                self.saveSqrCert(cert)
+                tokenV3Info = self.checkAndGetValue(e, "tokenV3IssueResult", 3)
+                _mid = self.checkAndGetValue(e, "mid", 4)
+                metadata = self.checkAndGetValue(e, "metaData", 10)
+                self.decodeE2EEKeyV1(metadata, secret, _mid)
+                authToken = self.checkAndGetValue(tokenV3Info, "accessToken", 1)
+                refreshToken = self.checkAndGetValue(tokenV3Info, "refreshToken", 2)
+                self.saveCacheData(".refreshToken", authToken, refreshToken)
+                print(f"AuthToken: {authToken}")
+                print(f"RefreshToken: {refreshToken}")
+                if isSelf:
+                    self.authToken = authToken
+                yield authToken
+            except LineServiceException as e:
+                if e.code == 100:
+                    # BANNED.
+                    raise e
+                print(e)
+                yield "try using requestSQR()..."
+                for _ in self.requestSQR(isSelf):
+                    yield _
             return
         raise Exception("can not check qr code, try again?")
 

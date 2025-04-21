@@ -132,7 +132,7 @@ class Config(object):
     )
 
     TOKEN_V3_SUPPORT = ["DESKTOPWIN", "DESKTOPMAC", "CHROMEOS"]
-    SYNC_SUPPORT = ["IOS", "IOSIPAD", "ANDROID", "CHROMEOS"]
+    SYNC_SUPPORT = ["IOS", "IOSIPAD", "ANDROID", "CHROMEOS", "DESKTOPWIN", "DESKTOPMAC"]
     USERDOMAIN = "KORONE-MY-WAIFU"
     SYSTEM_MODEL = "System Product Name"
     MODEL_NAME = "System Product Name"
@@ -142,7 +142,7 @@ class Config(object):
         self.DEVICE_TYPE = type
         self.isSecondary = False
         if type == "DESKTOPWIN":
-            self.APP_VER = "8.6.0.3277"
+            self.APP_VER = "9.8.0.3597"
             self.SYSTEM_NAME = "WINDOWS"
             self.SYSTEM_VER = "10.0.0-NT-x64"
             self.SYSTEM_MODEL = self.USERDOMAIN

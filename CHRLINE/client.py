@@ -139,7 +139,7 @@ class CHRLINE(
             if not noLogin:
                 sqr_func = self.requestSQR
                 if device in self.TOKEN_V3_SUPPORT:
-                    sqr_func = self.requestSQR2
+                    sqr_func = self.requestSQR3
                 for b in sqr_func():
                     print(b)
         if self.authToken:

@@ -145,8 +145,8 @@ class API(
         self.s_seamless = PrimarySeamlessLoginService(self.client)
         self.s_seamless_sec = SecondarySeamlessLoginService(self.client)
 
-    def requestPwlessLogin(self, phone, pw):
-        pwless_code = self.checkAndGetValue(self.createPwlessSession(phone), 1, "val_1")
+    def requestPwlessLogin(self, phone, region):
+        pwless_code = self.checkAndGetValue(self.createPwlessSession(phone, region), 1, "val_1")
         print(f"PWLESS SESSION: {pwless_code}")
         cert = self.getCacheData(".pwless", phone)
         try:

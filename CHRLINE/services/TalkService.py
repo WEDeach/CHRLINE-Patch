@@ -1507,11 +1507,30 @@ class TalkService(ChrHelperProtocol):
         ]
         return self.__sender.send(METHOD_NAME, params)
 
-    def react(self, messageId: int, reactionType: int = 5):
+    def react(
+        self,
+        messageId: int,
+        reactionType: Optional[int] = 5,
+        productId: Optional[str] = None,
+        emojiId: Optional[str] = None,
+        resourceType: Optional[int] = 1,
+        version: Optional[int] = 1,
+    ):
         """React to message."""
         METHOD_NAME = "react"
+        paidReactionType = [
+            [11, 1, productId],
+            [11, 2, emojiId],
+            [8, 3, resourceType],
+            [10, 4, version],
+        ]
+        predefinedReactionType = [
+            [8, 1, reactionType],
+        ]
+        if productId is not None and emojiId is not None:
+            predefinedReactionType = [[12, 2, paidReactionType]]
         params = [
-            [12, 1, [[8, 1, 0], [10, 2, messageId], [12, 3, [[8, 1, reactionType]]]]]
+            [12, 1, [[8, 1, 0], [10, 2, messageId], [12, 3, predefinedReactionType]]]
         ]
         return self.__sender.send(METHOD_NAME, params)
 
@@ -5504,11 +5523,12 @@ class TalkService(ChrHelperProtocol):
             [11, 4, keyData],
             [10, 5, time],
         ]
-        params = [
+        request = [
             [8, 1, 0],  # reqSeq
             [12, 2, pk],
             [11, 3, blobPayload],
         ]
+        params = [[12, 1, request]]
         return self.__sender.send(METHOD_NAME, params)
 
     def getIncrementalBackupMessages(self):

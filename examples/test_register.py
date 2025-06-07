@@ -1,8 +1,14 @@
-from CHRLINE import *
-import os, hashlib, hmac, base64, time
+import base64
+import hashlib
+import hmac
+import os
+import time
+
 import axolotl_curve25519 as Curve25519
-from Crypto.Cipher import AES
-from Crypto.Util.Padding import pad, unpad
+from CHRLINE import CHRLINE
+from CHRLINE.exceptions import LineServiceException
+from CHRLINE.utils.hashhash import h_pwd_by_scrypt
+
 
 def getSHA256Sum(*args):
     instance = hashlib.sha256()
@@ -12,12 +18,14 @@ def getSHA256Sum(*args):
         instance.update(arg)
     return instance.digest()
 
+
 def get_issued_at() -> bytes:
-    return base64.b64encode(
-        f"iat: {int(time.time()) * 60}\n".encode("utf-8")) + b"."
+    return base64.b64encode(f"iat: {int(time.time()) * 60}\n".encode("utf-8")) + b"."
+
 
 def get_digest(key: bytes, iat: bytes) -> bytes:
     return base64.b64encode(hmac.new(key, iat, hashlib.sha1).digest())
+
 
 def create_token(auth_key: str) -> str:
     mid, key = auth_key.partition(":")[::2]
@@ -32,76 +40,91 @@ def create_token(auth_key: str) -> str:
 
 UPDATE_NAME = True
 DISPLAY_NAME = "yinmo"
+PWD = "test2021Chrline"
+OS_MODEL = "SM-G975N"
+APP_VER = "15.7.1"
 
 
-
-cl = CHRLINE(device="ANDROID", noLogin=True)
+cl = CHRLINE(device="ANDROID", version=APP_VER, noLogin=True)
+cl.register_headers["User-Agent"] = f"Line/{APP_VER}"
 session = cl.openPrimarySession()
-
-private_key = Curve25519.generatePrivateKey(os.urandom(32))
-public_key = Curve25519.generatePublicKey(private_key)
-nonce = os.urandom(16)
-
-b64_private_key = base64.b64encode(private_key)
-b64_public_key = base64.b64encode(public_key)
-b64_nonce = base64.b64encode(nonce)
-print(f"private_key: {b64_private_key}")
-print(f"public_key: {b64_public_key}")
-print(f"nonce: {b64_nonce}")
 
 print(f"[SESSION] {session}")
 info = cl.getCountryInfo(session)
-phone = input('input your phone number(0936....): ')
-region = input('input phone number region(TW or JP or...): ')
-phone2 = cl.getPhoneVerifMethodV2(session, phone, region)
-print(f"[PHONE] {phone2[3]}")
-print(f"[VerifMethod] {phone2[1]}") # if it is not include number 1, maybe will return error
+phone = input("input your phone number(0936....): ")
+region = input("input phone number region(TW or JP or...): ")
 
-sendPin = cl.requestToSendPhonePinCode(session, phone2[3], region, phone2[1][0])
-print(f"[SEND PIN CODE] {sendPin}")
+allowedRegMethod = cl.getAllowedRegistrationMethod(session, region)
+phone2 = cl.getPhoneVerifMethodForRegistration(session, phone, region, OS_MODEL)
+availableMethods = phone2[1]
+prettifiedPhoneNumber = phone2[2]
 
-pin = input('Enter Pin code: ')
-verify = cl.verifyPhonePinCode(session, phone, region, pin)
-print(f"[VERIFY PIN CODE] {verify}")
-if 'error' in verify:
-    if verify['error']['code'] == 5:
-        print(f"[HUMAN_VERIFICATION_REQUIRED]")
-        hv = HumanVerif(verify['error']['metadata'][11][1], verify['error']['metadata'][11][2])
-        RetryReq(session, hv)
+print(f"[PHONE] {prettifiedPhoneNumber}")
+print(f"[VerifMethod] {availableMethods}")
 
-cl.validateProfile(session, 'yinmo')
+try:
+    sendPin = cl.requestToSendPhonePinCode(session, prettifiedPhoneNumber, region, 1)
+    print(f"[SEND PIN CODE] {sendPin}")
+except LineServiceException as e:
+    if e.code == 5:
+        _auth = e.raw["_data"][11]
+        _url = _auth[1]
+        _token = _auth[2]
+        HumanVerif(_url, _token)
+    else:
+        raise e
 
-exchangeEncryptionKey = cl.exchangeEncryptionKey(session, b64_public_key.decode(), b64_nonce.decode(), 1)
-print(f'exchangeEncryptionKey: {exchangeEncryptionKey}')
+for _ in range(2):
+    # 1 for Human verif
+    # 2 for resend pin code
+    if input("Need resend Pincode?(y/n): ").lower() == "y":
+        cl.requestToSendPhonePinCode(session, prettifiedPhoneNumber, region, 1)
+    else:
+        break  # break for next
 
-exc_key = base64.b64decode(exchangeEncryptionKey[1])
-exc_nonce = base64.b64decode(exchangeEncryptionKey[2])
+recvPincode = False
+while not recvPincode:
+    pin = input("Enter Pin code (enter `exit` to exit): ")
+    if pin.lower() == "exit":
+        exit()
+    try:
+        verify = cl.verifyPhonePinCode(session, prettifiedPhoneNumber, region, pin)
+        print(f"[VERIFY PIN CODE] {verify}")
+        recvPincode = True
+    except LineServiceException as e:
+        if e.code == 2:
+            print(f"[VERIFY PIN CODE] {e.message}")
+        else:
+            raise e
 
-sign = Curve25519.calculateAgreement(private_key, exc_key)
-print(f"sign: {sign}")
+cl.validateProfile(session, "yinmo")
 
-password = 'test2021Chrline'
+res_pwd_hash_params = cl.getPasswordHashingParametersForPwdReg(session)
+print(f"res_pwd_hash_params: {res_pwd_hash_params}")
 
-master_key = getSHA256Sum(b'master_key', sign, nonce, exc_nonce)
-aes_key = getSHA256Sum(b'aes_key', master_key)
-hmac_key = getSHA256Sum(b'hmac_key', master_key)
+pwd_params = res_pwd_hash_params[1]
+hmac_key = base64.b64decode(pwd_params[1])
+scrypt_params = pwd_params[2]
+scrypt_salt = base64.b64decode(scrypt_params[1])
+scrypt_nrp = scrypt_params[2]
+scrypt_dkLen = scrypt_params[3]
 
-e1 = AES.new(aes_key[:16], AES.MODE_CBC, aes_key[16:32])
-doFinal = e1.encrypt(pad(password.encode(), 16))
-hmacd = hmac.new(
-    hmac_key,
-    msg=doFinal,
-    digestmod=hashlib.sha256
-).digest()
-encPwd = base64.b64encode(doFinal + hmacd).decode()
+i_nrp = int(scrypt_nrp, 16)
+i_n = 2 ** ((i_nrp >> 16) & 0xFFFF)
+i_r = (i_nrp >> 8) & 0xFF
+i_p = i_nrp & 0xFF
+
+encPwd = h_pwd_by_scrypt(
+    PWD, hmac_key, salt=scrypt_salt, n=i_n, r=i_r, p=i_p, dklen=scrypt_dkLen
+)
 print(f"[encPwd] {encPwd}")
 
-setPwd = cl.setPassword(session, encPwd, 1)
+setPwd = cl.setHashedPassword(session, encPwd)
 print(f"[setPassword] {setPwd}")
 
-register = cl.registerPrimaryWithTokenV3(session)
+register = cl.registerPrimaryUsingPhoneWithTokenV3(session)
 print(f"[REGISTER] {register}")
-print(f"---------------------------")
+print("---------------------------")
 authKey = register[1]
 tokenV3IssueResult = register[2]
 mid = register[3]
@@ -109,7 +132,7 @@ primaryToken = create_token(authKey)
 print(f"[AuthKey]: {authKey}")
 print(f"[PrimaryToken]: {primaryToken}")
 print(f"[UserMid]: {mid}")
-print(f"---------------------------")
+print("---------------------------")
 accessTokenV3 = tokenV3IssueResult[1]
 print(f"[accessTokenV3]: {accessTokenV3}")
 refreshToken = tokenV3IssueResult[2]
@@ -122,11 +145,11 @@ print(f"[loginSessionId]: {loginSessionId}")
 tokenIssueTimeEpochSec = tokenV3IssueResult[6]
 print(f"[tokenIssueTimeEpochSec]: {tokenIssueTimeEpochSec}")
 
-cl = CHRLINE(primaryToken, device="ANDROID") #login
+cl = CHRLINE(primaryToken, version=APP_VER, device="ANDROID")  # login
 
 if UPDATE_NAME:
-    cl.updateProfileAttribute(2, DISPLAY_NAME) #update display name
+    cl.updateProfileAttribute(2, DISPLAY_NAME)  # update display name
 
 # for i in range(100):
-    # accessTokenV3 = cl.refreshAccessToken(refreshToken)
-    # print(f"[accessTokenV3_2]: {accessTokenV3}")
+# accessTokenV3 = cl.refreshAccessToken(refreshToken)
+# print(f"[accessTokenV3_2]: {accessTokenV3}")

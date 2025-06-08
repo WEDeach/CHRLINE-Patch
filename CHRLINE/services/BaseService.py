@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Optional
 
 if TYPE_CHECKING:
     from ..client import CHRLINE
@@ -35,7 +35,14 @@ class BaseServiceHandler:
 
 class BaseServiceSender(BaseServiceHandler):
     def __init__(
-        self, client: "CHRLINE", name: str, req_type: int, res_type: int, endpoint: str
+        self,
+        client: "CHRLINE",
+        name: str,
+        req_type: int,
+        res_type: int,
+        endpoint: str,
+        *,
+        baseException: Optional[Dict[str, int]] = None,
     ) -> None:
         BaseServiceHandler.__init__(self, client)
 
@@ -44,6 +51,7 @@ class BaseServiceSender(BaseServiceHandler):
         self.res_type = res_type
         self.res_type = res_type
         self.endpoint = endpoint
+        self.base_exception = baseException
 
     def send(self, method_name: str, params: list, **kwargs):
         """Send reqest by method name and params."""
@@ -51,6 +59,7 @@ class BaseServiceSender(BaseServiceHandler):
             "path": self.endpoint,
             "ttype": self.res_type,
             "readWith": f"{self.name}.{method_name}",
+            "baseException": self.base_exception,
         }
         payloads.update(kwargs)
         if "bdata" not in payloads:

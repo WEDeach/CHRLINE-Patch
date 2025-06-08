@@ -1,52 +1,50 @@
 # -*- coding: utf-8 -*-
 
-class AccountAuthFactorEapConnectService(object):
-    AAFEC_REQ_TYPE = 3
-    AAFEC_RES_TYPE = 3
+from ..helper import ChrHelperProtocol
+from .BaseService import BaseServiceSender, BaseServiceStruct
+
+
+class AccountAuthFactorEapConnectService(ChrHelperProtocol):
+    __REQ_TYPE = 4
+    __RES_TYPE = 4
+    __ENDPOINT = "/ACCT/authfactor/eap/v1"
 
     def __init__(self):
-        pass
+        self.__sender = BaseServiceSender(
+            self.client,
+            __class__.__name__,
+            self.__REQ_TYPE,
+            self.__RES_TYPE,
+            self.__ENDPOINT,
+        )
 
     def connectEapAccount(self, authSessionId: str):
+        METHOD_NAME = "connectEapAccount"
         params = [
-            [12, 1, [
-                [11, 1, authSessionId]
-            ]]
+            [11, 1, authSessionId],
         ]
-        sqrd = self.generateDummyProtocol(
-            'connectEapAccount', params, self.AAFEC_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(self.LINE_AUTH_EAP_ENDPOINT, sqrd, self.AAFEC_RES_TYPE)
+        params = BaseServiceStruct.BaseRequest(params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def disconnectEapAccount(self, eapType: int = 3):
+        METHOD_NAME = "disconnectEapAccount"
         params = [
-            [12, 1, [
-                [8, 1, eapType]
-            ]]
+            [8, 1, eapType],
         ]
-        sqrd = self.generateDummyProtocol(
-            'disconnectEapAccount', params, self.AAFEC_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(self.LINE_AUTH_EAP_ENDPOINT, sqrd, self.AAFEC_RES_TYPE)
+        params = BaseServiceStruct.BaseRequest(params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getHashedPpidForYahoojapan(self):
-        params = [
-            [12, 1, []]
-        ]
-        sqrd = self.generateDummyProtocol(
-            'getHashedPpidForYahoojapan', params, self.AAFEC_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(self.LINE_AUTH_EAP_ENDPOINT, sqrd, self.AAFEC_RES_TYPE)
+        METHOD_NAME = "getHashedPpidForYahoojapan"
+        params = []
+        params = BaseServiceStruct.BaseRequest(params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def openAAFECSession(self, udid: str, deviceModel: str = "Pixel 2"):
-        params = [
-            [12, 1, [
-                [12, 1, [
-                    [11, 1, udid],  # len 32
-                    [11, 1, deviceModel]
-                ]]
-            ]]
-        ]
-        sqrd = self.generateDummyProtocol(
-            'openSession', params, self.AAFEC_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(self.LINE_AUTH_EAP_ENDPOINT, sqrd, self.AAFEC_RES_TYPE)
+        METHOD_NAME = "openSession"
+        params = [12, 1, [[11, 1, udid], [11, 1, deviceModel]]]
+        params = BaseServiceStruct.BaseRequest(params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def verifyEapLogin(self, authSessionId: str, type: int, accessToken: str):
         """
@@ -56,15 +54,14 @@ class AccountAuthFactorEapConnectService(object):
             APPLE(2),
             YAHOOJAPAN(3);
         """
-        params = [
-            [12, 1, [
-                [11, 1, authSessionId],
-                [12, 2, [
-                    [8, 1, type],
-                    [11, 2, accessToken]
-                ]]
-            ]]
+        METHOD_NAME = "verifyEapLogin"
+        eapLogin = [
+            [8, 1, type],
+            [11, 2, accessToken],
         ]
-        sqrd = self.generateDummyProtocol(
-            'verifyEapLogin', params, self.AAFEC_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(self.LINE_AUTH_EAP_ENDPOINT, sqrd, self.AAFEC_RES_TYPE)
+        params = [
+            [11, 1, authSessionId],
+            [12, 2, eapLogin],
+        ]
+        params = BaseServiceStruct.BaseRequest(params)
+        return self.__sender.send(METHOD_NAME, params)

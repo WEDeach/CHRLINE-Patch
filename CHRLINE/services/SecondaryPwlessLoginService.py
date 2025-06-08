@@ -1,40 +1,54 @@
 # -*- coding: utf-8 -*-
 
-class SecondaryPwlessLoginService(object):
+from ..helper import ChrHelperProtocol
+from .BaseService import BaseServiceSender
+
+
+class SecondaryPwlessLoginService(ChrHelperProtocol):
+    __REQ_TYPE = 4
+    __RES_TYPE = 4
+    __ENDPOINT = "/acct/lgn/secpwless/v1"
     
     def __init__(self):
-        pass
+        self.__sender = BaseServiceSender(
+            self.client,
+            __class__.__name__,
+            self.__REQ_TYPE,
+            self.__RES_TYPE,
+            self.__ENDPOINT,
+        )
 
     def createPwlessSession(self, phone, region='TW'):
+        METHOD_NAME = "createSession"
         params = [
             [12, 1, [
                 [11, 1, phone],
                 [11, 2, region]
             ]]
         ]
-        sqrd = self.generateDummyProtocol('createSession', params, 4)
-        return self.postPackDataAndGetUnpackRespData(self.LINE_SECONDARY_PWLESS_LOGIN_ENDPOINT ,sqrd, 4)
+        return self.__sender.send(METHOD_NAME, params)
 
     def verifyLoginCertificate(self, session, cert=None):
+        METHOD_NAME = "verifyLoginCertificate"
         params = [
             [12, 1, [
                 [11, 1, session],
                 [11, 2, cert]
             ]]
         ]
-        sqrd = self.generateDummyProtocol('verifyLoginCertificate', params, 4)
-        return self.postPackDataAndGetUnpackRespData(self.LINE_SECONDARY_PWLESS_LOGIN_ENDPOINT ,sqrd, 4)
+        return self.__sender.send(METHOD_NAME, params)
 
     def requestPinCodeVerif(self, session):
+        METHOD_NAME = "requestPinCodeVerif"
         params = [
             [12, 1, [
                 [11, 1, session]
             ]]
         ]
-        sqrd = self.generateDummyProtocol('requestPinCodeVerif', params, 4)
-        return self.postPackDataAndGetUnpackRespData(self.LINE_SECONDARY_PWLESS_LOGIN_ENDPOINT ,sqrd, 4)
+        return self.__sender.send(METHOD_NAME, params)
 
     def putExchangeKey(self, session, temporalPublicKey, e2eeVersion=1):
+        METHOD_NAME = "putExchangeKey"
         params = [
             [12, 1, [
                 [11, 1, session],
@@ -44,28 +58,28 @@ class SecondaryPwlessLoginService(object):
                 }]]
             ]]
         ]
-        sqrd = self.generateDummyProtocol('putExchangeKey', params, 4)
-        return self.postPackDataAndGetUnpackRespData(self.LINE_SECONDARY_PWLESS_LOGIN_ENDPOINT ,sqrd, 4)
+        return self.__sender.send(METHOD_NAME, params)
 
     def requestPaakAuth(self, session):
+        METHOD_NAME = "requestPaakAuth"
         params = [
             [12, 1, [
                 [11, 1, session]
             ]]
         ]
-        sqrd = self.generateDummyProtocol('requestPaakAuth', params, 4)
-        return self.postPackDataAndGetUnpackRespData(self.LINE_SECONDARY_PWLESS_LOGIN_ENDPOINT ,sqrd, 4)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getE2eeKey(self, session):
+        METHOD_NAME = "getE2eeKey"
         params = [
             [12, 1, [
                 [11, 1, session]
             ]]
         ]
-        sqrd = self.generateDummyProtocol('getE2eeKey', params, 3)
-        return self.postPackDataAndGetUnpackRespData(self.LINE_SECONDARY_PWLESS_LOGIN_ENDPOINT ,sqrd, 3)
+        return self.__sender.send(METHOD_NAME, params)
 
     def pwlessLogin(self, session):
+        METHOD_NAME = "login"
         params = [
             [12, 1, [
                 [11, 1, session],
@@ -73,10 +87,10 @@ class SecondaryPwlessLoginService(object):
                 [11, 3, "CHANNELGW"]
             ]]
         ]
-        sqrd = self.generateDummyProtocol('login', params, 3)
-        return self.postPackDataAndGetUnpackRespData(self.LINE_SECONDARY_PWLESS_LOGIN_ENDPOINT ,sqrd, 3)
+        return self.__sender.send(METHOD_NAME, params)
 
     def pwlessLoginV2(self, session):
+        METHOD_NAME = "loginV2"
         params = [
             [12, 1, [
                 [11, 1, session],
@@ -85,5 +99,4 @@ class SecondaryPwlessLoginService(object):
                 [11, 4, "CHANNELGW"]
             ]]
         ]
-        sqrd = self.generateDummyProtocol('loginV2', params, 3)
-        return self.postPackDataAndGetUnpackRespData(self.LINE_SECONDARY_PWLESS_LOGIN_ENDPOINT ,sqrd, 3)
+        return self.__sender.send(METHOD_NAME, params)

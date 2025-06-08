@@ -1,15 +1,28 @@
 # -*- coding: utf-8 -*-
 
-class SquareBotService(object):
+from ..helper import ChrHelperProtocol
+from .BaseService import BaseServiceSender
+
+
+class SquareBotService(ChrHelperProtocol):
+    __REQ_TYPE = 4
+    __RES_TYPE = 4
+    __ENDPOINT = "/BP1"
 
     def __init__(self):
-        pass
+        self.__sender = BaseServiceSender(
+            self.client,
+            __class__.__name__,
+            self.__REQ_TYPE,
+            self.__RES_TYPE,
+            self.__ENDPOINT,
+        )
         
     def getSquareBot(self, botMid):
+        METHOD_NAME = "getSquareBot"
         params = [
             [12, 1, [
                 [11, 1, botMid]
             ]]
         ]
-        sqrd = self.generateDummyProtocol('getSquareBot', params, 4)
-        return self.postPackDataAndGetUnpackRespData(self.LINE_SQUARE_BOT_ENDPOINT ,sqrd, 4)
+        return self.__sender.send(METHOD_NAME, params)

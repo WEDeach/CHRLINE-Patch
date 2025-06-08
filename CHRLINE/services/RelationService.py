@@ -5,13 +5,10 @@ Author: YinMo (WEDeach)
 Version: 1.0.6
 """
 
-from typing import TYPE_CHECKING, List, Optional
+from typing import List, Optional
 
 from ..helper import ChrHelperProtocol
 from .BaseService import BaseServiceSender
-
-if TYPE_CHECKING:
-    pass
 
 
 class RelationService(ChrHelperProtocol):
@@ -155,10 +152,7 @@ class RelationService(ChrHelperProtocol):
         params = [[12, 1, params]]
         return self.__sender.send(METHOD_NAME, params)
 
-    def getTargetProfileNotice(
-        self,
-        targetUserMid: str
-    ):
+    def getTargetProfileNotice(self, targetUserMid: str):
         """Get target profile notice."""
         METHOD_NAME = "getTargetProfileNotice"
         params = [

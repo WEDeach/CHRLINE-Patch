@@ -1,22 +1,31 @@
 # -*- coding: utf-8 -*-
 
 
-class BuddyService(object):
-    BuddyService_REQ_TYPE = 3
-    BuddyService_RES_TYPE = 3
-    BuddyService_API_PATH = None
+from ..helper import ChrHelperProtocol
+from .BaseService import BaseServiceSender
+
+
+class BuddyService(ChrHelperProtocol):
+    __REQ_TYPE = 4
+    __RES_TYPE = 4
+    __ENDPOINT = "/BUDDY4"
 
     def __init__(self):
-        self.BuddyService_API_PATH = self.LINE_BUDDY_ENDPOINT
+        self.__sender = BaseServiceSender(
+            self.client,
+            __class__.__name__,
+            self.__REQ_TYPE,
+            self.__RES_TYPE,
+            self.__ENDPOINT,
+        )
 
     def getPromotedBuddyContacts(self, language="zh_TW", country="TW"):
         METHOD_NAME = "getPromotedBuddyContacts"
-        sqrd = [128, 1, 0, 1] + \
-            self.getStringBytes(METHOD_NAME) + [0, 0, 0, 0]
-        sqrd += [11, 0, 2] + self.getStringBytes(language)
-        sqrd += [11, 0, 3] + self.getStringBytes(country)
-        sqrd += [0]
-        return self.postPackDataAndGetUnpackRespData(self.LINE_BUDDY_ENDPOINT, sqrd, readWith=f"BuddyService.{METHOD_NAME}")
+        params = [
+            [11, 2, language],
+            [11, 3, country],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
     def getBuddyCategoryView(self):
         """
@@ -84,9 +93,7 @@ class BuddyService(object):
             [11, 1, buddyMid],
             [14, 2, [11, attributeSet]]
         ]
-        sqrd = self.generateDummyProtocol(
-            METHOD_NAME, params, self.BuddyService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(self.BuddyService_API_PATH, sqrd, self.BuddyService_RES_TYPE, readWith=f"BuddyService.{METHOD_NAME}")
+        return self.__sender.send(METHOD_NAME, params)
 
     def getBuddyLive(self):
         """
@@ -107,9 +114,7 @@ class BuddyService(object):
             [10, 5, fromIndex],
             [8, 6, count],
         ]
-        sqrd = self.generateDummyProtocol(
-            METHOD_NAME, params, self.BuddyService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(self.BuddyService_API_PATH, sqrd, self.BuddyService_RES_TYPE, readWith=f"BuddyService.{METHOD_NAME}")
+        return self.__sender.send(METHOD_NAME, params)
 
     def getBuddyTopView(self, language: str, country: str):
         """REMOVED"""
@@ -118,9 +123,7 @@ class BuddyService(object):
             [11, 2, language],
             [11, 3, country],
         ]
-        sqrd = self.generateDummyProtocol(
-            METHOD_NAME, params, self.BuddyService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(self.BuddyService_API_PATH, sqrd, self.BuddyService_RES_TYPE, readWith=f"BuddyService.{METHOD_NAME}")
+        return self.__sender.send(METHOD_NAME, params)
 
     def getBuddyCollectionEntries(self):
         """
@@ -145,9 +148,7 @@ class BuddyService(object):
     def getNewlyReleasedBuddyIds(self):
         METHOD_NAME = "getNewlyReleasedBuddyIds"
         params = []
-        sqrd = self.generateDummyProtocol(
-            METHOD_NAME, params, self.BuddyService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(self.BuddyService_API_PATH, sqrd, self.BuddyService_RES_TYPE, readWith=f"BuddyService.{METHOD_NAME}")
+        return self.__sender.send(METHOD_NAME, params)
 
     def getBuddyOnAir(self):
         """
@@ -168,9 +169,7 @@ class BuddyService(object):
             [10, 4, fromIndex],
             [8, 5, count],
         ]
-        sqrd = self.generateDummyProtocol(
-            METHOD_NAME, params, self.BuddyService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(self.BuddyService_API_PATH, sqrd, self.BuddyService_RES_TYPE, readWith=f"BuddyService.{METHOD_NAME}")
+        return self.__sender.send(METHOD_NAME, params)
 
     def getCountriesServingOfficialAccountPromotionV2(self):
         """
@@ -208,9 +207,7 @@ class BuddyService(object):
         params = [
             [11, 4, buddyMid]
         ]
-        sqrd = self.generateDummyProtocol(
-            METHOD_NAME, params, self.BuddyService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(self.BuddyService_API_PATH, sqrd, self.BuddyService_RES_TYPE, readWith=f"BuddyService.{METHOD_NAME}")
+        return self.__sender.send(METHOD_NAME, params)
 
     def findBuddyContactsByQuery(self):
         """

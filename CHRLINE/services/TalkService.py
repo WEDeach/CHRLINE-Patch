@@ -16,8 +16,9 @@ from .BaseService import (
 try:
     from ..exceptions import LineServiceException
     from .thrift.ttypes import TalkException
-except:
+except Exception as _:
     pass
+
 if TYPE_CHECKING:
     from ..client import CHRLINE
 
@@ -361,14 +362,18 @@ class TalkService(ChrHelperProtocol):
         params = []
         return self.__sender.send(METHOD_NAME, params)
 
-    def getProfile(self):
+    def getProfile(self, syncReason: int = 2):
         METHOD_NAME = "getProfile"
-        params = []
+        params = [
+            [8, 1, syncReason],
+        ]
         return self.__sender.send(METHOD_NAME, params)
 
-    def getSettings(self):
+    def getSettings(self, syncReason: int = 2):
         METHOD_NAME = "getSettings"
-        params = []
+        params = [
+            [8, 1, syncReason],
+        ]
         return self.__sender.send(METHOD_NAME, params)
 
     def sendChatChecked(
@@ -473,20 +478,32 @@ class TalkService(ChrHelperProtocol):
         ]
         return self.__sender.send(METHOD_NAME, params)
 
-    def getChats(self, mids: List[str], withMembers=True, withInvitees=True):
+    def getChats(
+        self,
+        mids: List[str],
+        withMembers: bool = True,
+        withInvitees: bool = True,
+        syncReason: int = 1,
+    ):
         """Get chats."""
         METHOD_NAME = "getChats"
         if not isinstance(mids, list):
             raise Exception("[getChats] mids must be a list")
         params = [
-            [12, 1, [[15, 1, [11, mids]], [2, 2, withMembers], [2, 3, withInvitees]]]
+            [12, 1, [[15, 1, [11, mids]], [2, 2, withMembers], [2, 3, withInvitees]]],
+            [8, 2, syncReason],
         ]
         return self.__sender.send(METHOD_NAME, params)
 
-    def getAllChatMids(self, withMembers=True, withInvitees=True):
+    def getAllChatMids(
+        self, withMembers: bool = True, withInvitees: bool = True, syncReason: int = 2
+    ):
         """Get all chat mids."""
         METHOD_NAME = "getAllChatMids"
-        params = [[12, 1, [[2, 1, withMembers], [2, 2, withInvitees]]], [8, 2, 7]]
+        params = [
+            [12, 1, [[2, 1, withMembers], [2, 2, withInvitees]]],
+            [8, 2, syncReason],
+        ]
         return self.__sender.send(METHOD_NAME, params)
 
     def getCompactGroup(self, mid: str):
@@ -714,10 +731,12 @@ class TalkService(ChrHelperProtocol):
         params = []
         return self.__sender.send(METHOD_NAME, params)
 
-    def getAllContactIds(self):
+    def getAllContactIds(self, syncReason: int = 2):
         """Get all contact ids."""
         METHOD_NAME = "getAllContactIds"
-        params = []
+        params = [
+            [8, 1, syncReason],
+        ]
         return self.__sender.send(METHOD_NAME, params)
 
     def getBlockedContactIds(self):
@@ -1886,10 +1905,10 @@ class TalkService(ChrHelperProtocol):
         params = [[11, 2, eMid]]
         return self.__sender.send(METHOD_NAME, params)
 
-    def getMessageReadRange(self, chatIds: List[str]):
+    def getMessageReadRange(self, chatIds: List[str], syncReason: int = 1):
         """Get message read range."""
         METHOD_NAME = "getMessageReadRange"
-        params = [[15, 2, [11, chatIds]]]
+        params = [[15, 2, [11, chatIds]], [8, 3, syncReason]]
         return self.__sender.send(METHOD_NAME, params)
 
     def getChatRoomBGMs(self, chatIds: List[str]):
@@ -2107,7 +2126,7 @@ class TalkService(ChrHelperProtocol):
         reference: str = '{"screen":"groupMemberList","spec":"native"}',
     ):
         METHOD_NAME = "findAndAddContactsByPhone"
-        if type(phones) != list:
+        if isinstance(phones, list):
             raise Exception("[findAndAddContactsByPhone] phones must be a list")
         params = [
             [8, 1, self.client.getCurrReqId()],
@@ -2139,11 +2158,11 @@ class TalkService(ChrHelperProtocol):
         ** NOTE: need turn on the 'allow_sync' setting.
         """
         METHOD_NAME = "syncContacts"
-        if type(phones) != list:
+        if isinstance(phones, list):
             raise Exception("[syncContacts] phones must be a list")
-        if type(emails) != list:
+        if isinstance(emails, list):
             raise Exception("[syncContacts] emails must be a list")
-        if type(userids) != list:
+        if isinstance(userids, list):
             raise Exception("[syncContacts] userids must be a list")
         localContacts = []
         luid = 0
@@ -5598,6 +5617,36 @@ class TalkService(ChrHelperProtocol):
         return self.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
+
+    def verifyQrcodeWithE2EE(
+        self,
+        verifier,
+        keyId,
+        keyData,
+        createdTime,
+        encryptedKeyChain,
+        hashKeyChain,
+        pinCode="",
+    ):
+        METHOD_NAME = "verifyQrcodeWithE2EE"
+        params = [
+            [11, 2, verifier],
+            [11, 3, pinCode],
+            [8, 4, 95],  # errorCode
+            [
+                12,
+                5,
+                [
+                    [8, 1, 1],  # version
+                    [8, 2, keyId],
+                    [11, 4, keyData],
+                    [10, 5, createdTime],
+                ],
+            ],
+            [11, 6, encryptedKeyChain],
+            [11, 7, hashKeyChain],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
 
 class TalkServiceStruct(BaseServiceStruct):

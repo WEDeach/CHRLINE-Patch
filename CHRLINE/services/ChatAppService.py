@@ -1,28 +1,33 @@
 # -*- coding: utf-8 -*-
 
-class ChatAppService(object):
-    CAPP_REQ_TYPE = 4
-    CAPP_RES_TYPE = 4
-    
+from typing import Optional
+
+from ..helper import ChrHelperProtocol
+from .BaseService import BaseServiceSender
+
+
+class ChatAppService(ChrHelperProtocol):
+    __REQ_TYPE = 4
+    __RES_TYPE = 4
+    __ENDPOINT = "/CAPP1"
+
     def __init__(self):
-        pass
+        self.__sender = BaseServiceSender(
+            self.client,
+            __class__.__name__,
+            self.__REQ_TYPE,
+            self.__RES_TYPE,
+            self.__ENDPOINT,
+        )
 
-    def getChatapp(self, chatappId: str, language: str = 'zh_TW'):
-        params = [
-            [12, 1, [
-                [11, 1, chatappId],
-                [11, 2, language]
-            ]]
-        ]
-        sqrd = self.generateDummyProtocol('getChatapp', params, self.CAPP_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(self.LINE_CHAT_APP_ENDPOINT, sqrd, self.CAPP_RES_TYPE)
+    def getChatapp(self, chatappId: str, language: str = "zh_TW"):
+        METHOD_NAME = "getChatapp"
+        params = [[12, 1, [[11, 1, chatappId], [11, 2, language]]]]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getMyChatapps(self, language: str = 'zh_TW', continuationToken: str = None):
-        params = [
-            [12, 1, [
-                [11, 1, language],
-                [11, 2, None]
-            ]]
-        ]
-        sqrd = self.generateDummyProtocol('getMyChatapps', params, self.CAPP_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(self.LINE_CHAT_APP_ENDPOINT, sqrd, self.CAPP_RES_TYPE)
+    def getMyChatapps(
+        self, language: str = "zh_TW", continuationToken: Optional[str] = None
+    ):
+        METHOD_NAME = "getMyChatapps"
+        params = [[12, 1, [[11, 1, language], [11, 2, continuationToken]]]]
+        return self.__sender.send(METHOD_NAME, params)

@@ -1,21 +1,26 @@
 # -*- coding: utf-8 -*-
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import Dict, List, Optional
 
-from .BaseService import BaseService, BaseServiceStruct
-
-if TYPE_CHECKING:
-    from ..client import CHRLINE
+from ..helper import ChrHelperProtocol
+from .BaseService import BaseServiceSender, BaseServiceStruct
 
 
-class SquareService(BaseService):
-    SquareService_REQ_TYPE = 4
-    SquareService_RES_TYPE = 4
-    SquareService_API_PATH = "/SQS1"
+class SquareService(ChrHelperProtocol):
+    __REQ_TYPE = 4
+    __RES_TYPE = 4
+    __ENDPOINT = "/SQS1"
 
     SQUARE_EXCEPTION = {"code": 1, "message": 3, "metadata": 2}
 
     def __init__(self):
-        self.SquareService_API_PATH = self.LINE_SQUARE_ENDPOINT
+        self.__sender = BaseServiceSender(
+            self.client,
+            __class__.__name__,
+            self.__REQ_TYPE,
+            self.__RES_TYPE,
+            self.__ENDPOINT,
+            baseException=self.SQUARE_EXCEPTION,
+        )
 
     def inviteIntoSquareChat(
         self,
@@ -28,7 +33,7 @@ class SquareService(BaseService):
             [15, 1, [11, inviteeMids]],
             [11, 2, squareChatMid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def inviteToSquare(
         self,
@@ -43,7 +48,7 @@ class SquareService(BaseService):
             [15, 3, [11, invitees]],
             [11, 4, squareChatMid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getJoinedSquares(
         self,
@@ -56,7 +61,7 @@ class SquareService(BaseService):
             [11, 2, continuationToken],
             [8, 3, limit],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def markAsRead(
         self,
@@ -72,7 +77,7 @@ class SquareService(BaseService):
         ]
         if threadMid is not None:
             params.append([11, 5, threadMid])
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def reactToMessage(
         self,
@@ -103,7 +108,7 @@ class SquareService(BaseService):
         ]
         if threadMid is not None:
             params.append([11, 5, threadMid])
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def findSquareByInvitationTicket(
         self,
@@ -112,7 +117,7 @@ class SquareService(BaseService):
         """Find square by invitation ticket."""
         METHOD_NAME = "findSquareByInvitationTicket"
         params = [[11, 2, invitationTicket]]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def fetchMyEvents(
         self,
@@ -129,7 +134,7 @@ class SquareService(BaseService):
             [8, 3, limit],
             [11, 4, continuationToken],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def fetchSquareChatEvents(
         self,
@@ -155,7 +160,7 @@ class SquareService(BaseService):
             [8, 8, fetchType],
             [11, 9, threadMid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def sendSquareMessage(
         self,
@@ -163,7 +168,7 @@ class SquareService(BaseService):
         text: str,
         contentType: int = 0,
         contentMetadata: dict = {},
-        relatedMessageId: str = None,
+        relatedMessageId: Optional[str] = None,
     ):
         """Send message for square chat (OLD)."""
         METHOD_NAME = "sendMessage"
@@ -185,7 +190,7 @@ class SquareService(BaseService):
             )
             message.append([8, 24, 2])
         params = [
-            [8, 1, self.getCurrReqId()],
+            [8, 1, self.client.getCurrReqId()],
             [11, 2, squareChatMid],
             [
                 12,
@@ -196,7 +201,7 @@ class SquareService(BaseService):
                 ],
             ],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def sendSquareTextMessage(
         self,
@@ -215,7 +220,7 @@ class SquareService(BaseService):
         params = [
             [11, 2, squareMid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getJoinableSquareChats(
         self, squareMid: str, continuationToken: Optional[str] = None, limit: int = 100
@@ -223,7 +228,7 @@ class SquareService(BaseService):
         """Get joinable square chats."""
         METHOD_NAME = "getJoinableSquareChats"
         params = [[11, 1, squareMid], [11, 10, continuationToken], [8, 11, limit]]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def createSquare(
         self,
@@ -244,7 +249,7 @@ class SquareService(BaseService):
         """
         METHOD_NAME = "createSquare"
         params = [
-            [8, 2, self.getCurrReqId()],
+            [8, 2, self.client.getCurrReqId()],
             [
                 12,
                 2,
@@ -273,7 +278,7 @@ class SquareService(BaseService):
                 ],
             ],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSquareChatAnnouncements(self, squareMid: str):
         """Get square chat announcements."""
@@ -281,7 +286,7 @@ class SquareService(BaseService):
         params = [
             [11, 2, squareMid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def leaveSquareChat(self):
         """
@@ -310,7 +315,7 @@ class SquareService(BaseService):
             [11, 2, squareMemberMid],
             [11, 3, squareChatMid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def searchSquares(
         self,
@@ -325,7 +330,7 @@ class SquareService(BaseService):
             [11, 3, continuationToken],
             [8, 4, limit],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def updateSquareFeatureSet(
         self,
@@ -398,7 +403,7 @@ class SquareService(BaseService):
             [14, 2, [8, updateAttributes]],
             [12, 3, SquareFeatureSet],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def joinSquare(
         self,
@@ -431,7 +436,7 @@ class SquareService(BaseService):
             params.append([12, 5, squareJoinMethodValue])
         if claimAdult is not None:
             params.append([8, 6, claimAdult])
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSquarePopularKeywords(self):
         """
@@ -439,7 +444,7 @@ class SquareService(BaseService):
         """
         METHOD_NAME = "getPopularKeywords"
         params = []
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def reportSquareMessage(
         self,
@@ -462,7 +467,7 @@ class SquareService(BaseService):
             params.append([11, 6, otherReason])
         if threadMid is not None:
             params.append([11, 7, threadMid])
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def updateSquareMemberRelation(
         self,
@@ -484,7 +489,7 @@ class SquareService(BaseService):
             [14, 4, [8, updatedAttrs]],
             [12, 5, relation],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def leaveSquare(self, squareMid: str):
         """
@@ -494,7 +499,7 @@ class SquareService(BaseService):
         params = [
             [11, 2, squareMid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSquareMemberRelations(
         self, state: int, continuationToken: Optional[str] = None, limit: int = 20
@@ -504,9 +509,10 @@ class SquareService(BaseService):
         """
         METHOD_NAME = "getSquareMemberRelations"
         params = [[8, 2, state], [11, 3, continuationToken], [8, 4, limit]]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def removeSquareSubscriptions(self, subscriptionIds: list = []):
+        METHOD_NAME = "removeSquareSubscriptions"
         params = [
             [
                 12,
@@ -516,14 +522,7 @@ class SquareService(BaseService):
                 ],
             ]
         ]
-        sqrd = self.generateDummyProtocol("removeSubscriptions", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_SQUARE_ENDPOINT,
-            sqrd,
-            4,
-            encType=0,
-            baseException=SquareService.SQUARE_EXCEPTION,
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSquareMembers(self, mids: List[str]):
         """Get square members."""
@@ -531,7 +530,7 @@ class SquareService(BaseService):
         params = [
             [14, 2, [11, mids]],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def updateSquareChat(
         self,
@@ -577,7 +576,7 @@ class SquareService(BaseService):
             [14, 2, [8, updatedAttrs]],
             [12, 3, squareChat],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSquareMessageReactions(
         self,
@@ -600,7 +599,7 @@ class SquareService(BaseService):
             [8, 5, limit],
             [11, 6, threadMid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def destroySquareMessage(
         self, squareChatMid: str, messageId: str, threadMid: Optional[str]
@@ -610,7 +609,7 @@ class SquareService(BaseService):
         """
         METHOD_NAME = "destroyMessage"
         params = [[11, 2, squareChatMid], [11, 4, messageId], [11, 5, threadMid]]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def reportSquareChat(
         self,
@@ -628,7 +627,7 @@ class SquareService(BaseService):
         ]
         if otherReason is not None:
             params.append([11, 6, otherReason])
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def unsendSquareMessage(self, squareChatMid: str, messageId: str):
         """
@@ -638,16 +637,7 @@ class SquareService(BaseService):
         """
         METHOD_NAME = "unsendMessage"
         params = SquareServiceStruct.UnsendMessageRequest(squareChatMid, messageId)
-        sqrd = self.generateDummyProtocol(
-            METHOD_NAME, params, self.SquareService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.SquareService_API_PATH,
-            sqrd,
-            self.SquareService_RES_TYPE,
-            baseException=SquareService.SQUARE_EXCEPTION,
-            readWith=f"{__class__.__name__}.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def deleteSquareChatAnnouncement(self, squareChatMid: str, announcementSeq: int):
         """
@@ -655,7 +645,7 @@ class SquareService(BaseService):
         """
         METHOD_NAME = "deleteSquareChatAnnouncement"
         params = [[11, 2, squareChatMid], [10, 3, announcementSeq]]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def createSquareChat(
         self,
@@ -678,12 +668,13 @@ class SquareService(BaseService):
             OFF(1),
             ON(2);
         """
+        METHOD_NAME = "createSquareChat"
         params = [
             [
                 12,
                 1,
                 [
-                    [8, 1, self.getCurrReqId()],
+                    [8, 1, self.client.getCurrReqId()],
                     [
                         12,
                         2,
@@ -700,15 +691,7 @@ class SquareService(BaseService):
                 ],
             ]
         ]
-        sqrd = self.generateDummyProtocol(
-            "createSquareChat", params, self.SquareService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.SquareService_API_PATH,
-            sqrd,
-            self.SquareService_RES_TYPE,
-            baseException=SquareService.SQUARE_EXCEPTION,
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def deleteSquareChat(
         self,
@@ -720,7 +703,7 @@ class SquareService(BaseService):
         """
         METHOD_NAME = "deleteSquareChat"
         params = [[11, 2, squareChatMid], [10, 3, revision]]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSquareChatMembers(
         self,
@@ -733,7 +716,7 @@ class SquareService(BaseService):
         if continuationToken is not None:
             GetSquareChatMembersRequest.append([11, 2, continuationToken])
         params = [[12, 1, GetSquareChatMembersRequest]]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSquareFeatureSet(
         self,
@@ -744,7 +727,7 @@ class SquareService(BaseService):
         params = [
             [11, 2, squareMid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def updateSquareAuthority(
         self,
@@ -788,7 +771,7 @@ class SquareService(BaseService):
             [14, 2, [8, updateAttributes]],
             [12, 3, authority],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def rejectSquareMembers(
         self,
@@ -798,7 +781,7 @@ class SquareService(BaseService):
         """Reject square members."""
         METHOD_NAME = "rejectSquareMembers"
         params = [[11, 2, squareMid], [15, 3, [11, requestedMemberMids]]]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def deleteSquare(
         self,
@@ -810,7 +793,7 @@ class SquareService(BaseService):
         """
         METHOD_NAME = "deleteSquare"
         params = [[11, 2, mid], [10, 3, revision]]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def reportSquare(
         self,
@@ -826,7 +809,7 @@ class SquareService(BaseService):
         ]
         if otherReason is not None:
             params.append([11, 4, otherReason])
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSquareInvitationTicketUrl(
         self,
@@ -837,7 +820,7 @@ class SquareService(BaseService):
         params = [
             [11, 2, mid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def updateSquareChatMember(
         self,
@@ -866,7 +849,7 @@ class SquareService(BaseService):
             [14, 2, [8, updatedAttrs]],
             [12, 3, chatMember],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def updateSquareMember(
         self,
@@ -875,9 +858,9 @@ class SquareService(BaseService):
         squareMemberMid: str,
         squareMid: str,
         revision: int,
-        displayName: str = None,
-        membershipState: int = None,
-        role: int = None,
+        displayName: Optional[str] = None,
+        membershipState: Optional[int] = None,
+        role: Optional[int] = None,
     ):
         """
         Update square member.
@@ -918,7 +901,7 @@ class SquareService(BaseService):
             [14, 3, [8, updatedPreferenceAttrs]],
             [12, 4, squareMember],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     # https://discord.com/channels/466066749440393216/1076212330620256296
     def deleteOtherFromSquare(self, sid: str, pid: str):
@@ -927,16 +910,22 @@ class SquareService(BaseService):
         UPDATE_ATTRS = [5]
         MEMBERSHIP_STATE = 5
         getSquareMemberResp = self.getSquareMember(pid)
-        squareMember = self.checkAndGetValue(getSquareMemberResp, "squareMember", 1)
-        squareMemberRevision = self.checkAndGetValue(squareMember, "revision", 9)
-        revision = squareMemberRevision
-        self.updateSquareMember(
-            UPDATE_ATTRS,
-            UPDATE_PREF_ATTRS,
-            pid,
-            sid,
-            revision,
-            membershipState=MEMBERSHIP_STATE,
+        squareMember = self.client.checkAndGetValue(
+            getSquareMemberResp, "squareMember", 1
+        )
+        squareMemberRevision = self.client.checkAndGetValue(squareMember, "revision", 9)
+        if isinstance(squareMemberRevision, int):
+            revision = squareMemberRevision
+            return self.updateSquareMember(
+                UPDATE_ATTRS,
+                UPDATE_PREF_ATTRS,
+                pid,
+                sid,
+                revision,
+                membershipState=MEMBERSHIP_STATE,
+            )
+        raise ValueError(
+            f"squareMemberRevision is not a number: {squareMemberRevision}"
         )
 
     def updateSquare(
@@ -1005,7 +994,7 @@ class SquareService(BaseService):
             [14, 2, [11, updatedAttrs]],
             [12, 3, square],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSquareAuthorities(self, squareMids: List[str]):
         """
@@ -1013,7 +1002,7 @@ class SquareService(BaseService):
         """
         METHOD_NAME = "getSquareAuthorities"
         params = [[14, 2, [11, squareMids]]]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def updateSquareMembers(self):
         """
@@ -1037,7 +1026,7 @@ class SquareService(BaseService):
         """
         METHOD_NAME = "getSquareChatStatus"
         params = [[11, 2, squareChatMid]]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def approveSquareMembers(self):
         """
@@ -1061,7 +1050,7 @@ class SquareService(BaseService):
         params = [
             [11, 2, squareMid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def searchSquareMembers(
         self,
@@ -1103,9 +1092,10 @@ class SquareService(BaseService):
             [11, 4, continuationToken],
             [8, 5, limit],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def checkSquareJoinCode(self, squareMid: str, code: str):
+        METHOD_NAME = "checkJoinCode"
         params = [
             [
                 12,
@@ -1116,14 +1106,7 @@ class SquareService(BaseService):
                 ],
             ]
         ]
-        sqrd = self.generateDummyProtocol("checkJoinCode", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_SQUARE_ENDPOINT,
-            sqrd,
-            4,
-            encType=0,
-            baseException=SquareService.SQUARE_EXCEPTION,
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def createSquareChatAnnouncement(
         self,
@@ -1138,12 +1121,13 @@ class SquareService(BaseService):
         - SquareChatAnnouncementType:
             TEXT_MESSAGE(0);
         """
+        METHOD_NAME = "createSquareChatAnnouncement"
         params = [
             [
                 12,
                 1,
                 [
-                    [8, 1, self.getCurrReqId()],
+                    [8, 1, self.client.getCurrReqId()],
                     [11, 2, squareChatMid],
                     [
                         12,
@@ -1171,15 +1155,7 @@ class SquareService(BaseService):
                 ],
             ]
         ]
-        sqrd = self.generateDummyProtocol(
-            "createSquareChatAnnouncement", params, self.SquareService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.SquareService_API_PATH,
-            sqrd,
-            self.SquareService_RES_TYPE,
-            baseException=SquareService.SQUARE_EXCEPTION,
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSquareAuthority(
         self,
@@ -1190,7 +1166,7 @@ class SquareService(BaseService):
         """
         METHOD_NAME = "getSquareAuthority"
         params = [[11, 1, squareMid]]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSquareChat(
         self,
@@ -1201,7 +1177,7 @@ class SquareService(BaseService):
         """
         METHOD_NAME = "getSquareChat"
         params = [[11, 1, squareChatMid]]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def refreshSquareSubscriptions(
         self,
@@ -1212,7 +1188,7 @@ class SquareService(BaseService):
         params = [
             [15, 2, [10, subscriptions]],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getJoinedSquareChats(
         self,
@@ -1224,7 +1200,7 @@ class SquareService(BaseService):
         """
         METHOD_NAME = "getJoinedSquareChats"
         params = [[11, 2, continuationToken], [8, 3, limit]]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def joinSquareChat(
         self,
@@ -1235,7 +1211,7 @@ class SquareService(BaseService):
         params = [
             [11, 1, squareChatMid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def findSquareByEmid(
         self,
@@ -1248,7 +1224,7 @@ class SquareService(BaseService):
         params = [
             [11, 1, emid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSquareMemberRelation(
         self,
@@ -1263,7 +1239,7 @@ class SquareService(BaseService):
             [11, 2, squareMid],
             [11, 3, targetSquareMemberMid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSquareMember(
         self,
@@ -1274,7 +1250,7 @@ class SquareService(BaseService):
         params = [
             [11, 2, squareMemberMid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def destroySquareMessages(
         self,
@@ -1291,7 +1267,7 @@ class SquareService(BaseService):
             [14, 4, [11, messageIds]],
             [11, 5, threadMid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSquareCategories(self):
         """
@@ -1299,7 +1275,7 @@ class SquareService(BaseService):
         """
         METHOD_NAME = "getCategories"
         params = []
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def reportSquareMember(
         self,
@@ -1321,7 +1297,7 @@ class SquareService(BaseService):
             params.append([11, 5, squareChatMid])
         if threadMid is not None:
             params.append([11, 6, threadMid])
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSquareNoteStatus(
         self,
@@ -1334,7 +1310,7 @@ class SquareService(BaseService):
         params = [
             [11, 2, squareMid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def searchSquareChatMembers(
         self,
@@ -1353,7 +1329,7 @@ class SquareService(BaseService):
         ]
         if continuationToken is not None:
             params.append([11, 3, continuationToken])
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSquareChatFeatureSet(
         self,
@@ -1364,7 +1340,7 @@ class SquareService(BaseService):
         params = [
             [11, 2, squareChatMid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSquareEmid(
         self,
@@ -1379,7 +1355,7 @@ class SquareService(BaseService):
         """
         METHOD_NAME = "getSquareEmid"
         params = [[11, 1, squareMid]]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSquareMembersBySquare(
         self,
@@ -1398,7 +1374,7 @@ class SquareService(BaseService):
             [11, 2, squareMid],
             [14, 3, [11, squareMemberMids]],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def manualRepair(
         self,
@@ -1422,13 +1398,13 @@ class SquareService(BaseService):
             [8, 2, limit],
             [11, 3, continuationToken],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getJoinedSquareChatThreads(
         self,
         squareChatMid: str,
         limit: int = 20,
-        continuationToken: str = None,
+        continuationToken: Optional[str] = None,
     ):
         """
         Get joined square chat threads.
@@ -1443,7 +1419,7 @@ class SquareService(BaseService):
             [8, 2, limit],
             [11, 3, continuationToken],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def createSquareChatThread(
         self,
@@ -1471,10 +1447,10 @@ class SquareService(BaseService):
             [11, 4, messageId],
         ]
         params = [
-            [8, 1, self.getCurrReqId("sq")],
+            [8, 1, self.client.getCurrReqId("sq")],
             [12, 2, squareChatThread],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSquareChatThread(
         self,
@@ -1493,7 +1469,7 @@ class SquareService(BaseService):
             [11, 1, squareChatMid],
             [11, 2, squareChatThreadMid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def joinSquareChatThread(
         self,
@@ -1512,7 +1488,7 @@ class SquareService(BaseService):
             [11, 1, squareChatMid],
             [11, 2, squareChatThreadMid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def syncSquareMembers(
         self,
@@ -1537,7 +1513,7 @@ class SquareService(BaseService):
             [11, 1, squareMid],
             [13, 2, [11, 10, squareMembers]],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def hideSquareMemberContents(
         self,
@@ -1554,7 +1530,7 @@ class SquareService(BaseService):
         params = [
             [11, 1, squareMemberMid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def markChatsAsRead(
         self,
@@ -1571,7 +1547,7 @@ class SquareService(BaseService):
         params = [
             [14, 2, [11, chatMids]],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def reportMessageSummary(
         self,
@@ -1592,7 +1568,7 @@ class SquareService(BaseService):
             [10, 2, messageSummaryRangeTo],
             [8, 3, reportType],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getGoogleAdOptions(
         self,
@@ -1613,7 +1589,7 @@ class SquareService(BaseService):
             [11, 2, chatMid],
             [8, 3, adScreen],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def unhideSquareMemberContents(
         self,
@@ -1630,7 +1606,7 @@ class SquareService(BaseService):
         params = [
             [11, 1, squareMemberMid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSquareChatEmid(
         self,
@@ -1647,7 +1623,7 @@ class SquareService(BaseService):
         params = [
             [11, 1, squareChatMid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSquareThread(
         self,
@@ -1666,7 +1642,7 @@ class SquareService(BaseService):
             [11, 1, threadMid],
             [2, 2, includeRootMessage],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSquareThreadMid(
         self,
@@ -1685,7 +1661,7 @@ class SquareService(BaseService):
             [11, 1, chatMid],
             [11, 2, messageId],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getUserSettings(
         self,
@@ -1702,7 +1678,7 @@ class SquareService(BaseService):
         params = [
             [14, 1, [8, requestedAttrs]],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def markThreadsAsRead(
         self,
@@ -1719,7 +1695,7 @@ class SquareService(BaseService):
         params = [
             [11, 1, chatMid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def sendSquareThreadMessage(
         self,
@@ -1745,12 +1721,12 @@ class SquareService(BaseService):
             [8, 3, 5],
         ]
         params = [
-            [8, 1, self.getCurrReqId("sq")],
+            [8, 1, self.client.getCurrReqId("sq")],
             [11, 2, chatMid],
             [11, 3, threadMid],
             [12, 4, threadMessage],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def findSquareByInvitationTicketV2(
         self,
@@ -1765,7 +1741,7 @@ class SquareService(BaseService):
         """
         METHOD_NAME = "findSquareByInvitationTicketV2"
         params = [[11, 1, invitationTicket]]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def leaveSquareThread(
         self,
@@ -1784,7 +1760,7 @@ class SquareService(BaseService):
             [11, 1, chatMid],
             [11, 2, threadMid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def joinSquareThread(
         self,
@@ -1803,7 +1779,7 @@ class SquareService(BaseService):
             [11, 1, chatMid],
             [11, 2, threadMid],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def updateUserSettings(
         self,
@@ -1825,7 +1801,7 @@ class SquareService(BaseService):
             [14, 1, [8, updatedAttrs]],
             [12, 2, userSettings],
         ]
-        return SquareServiceStruct.SendRequestByName(self, METHOD_NAME, params)
+        return self.__sender.send(METHOD_NAME, params)
 
     def searchMentionables(self):
         """
@@ -1849,17 +1825,3 @@ class SquareServiceStruct(BaseServiceStruct):
     @staticmethod
     def UnsendMessageRequest(squareChatMid: str, messageId: str):
         return __class__.BaseRequest([[11, 2, squareChatMid], [11, 3, messageId]])
-
-    @staticmethod
-    def SendRequestByName(client: "CHRLINE", name: str, request: list):
-        payload = __class__.BaseRequest(request)
-        sqrd = client.generateDummyProtocol(
-            name, payload, client.SquareService_REQ_TYPE
-        )
-        return client.postPackDataAndGetUnpackRespData(
-            client.SquareService_API_PATH,
-            sqrd,
-            client.SquareService_RES_TYPE,
-            baseException=SquareService.SQUARE_EXCEPTION,
-            readWith=f"SquareService.{name}",
-        )

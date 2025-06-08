@@ -1,67 +1,70 @@
 # -*- coding: utf-8 -*-
 
-class OaMembershipService(object):
-    OaMembershipService_REQ_TYPE = 4
-    OaMembershipService_RES_TYPE = 4
-    OaMembershipService_API_PATH = "/EXT/bot/oafan"
+from ..helper import ChrHelperProtocol
+from .BaseService import BaseServiceSender
+
+
+class OaMembershipService(ChrHelperProtocol):
+    __REQ_TYPE = 4
+    __RES_TYPE = 4
+    __ENDPOINT = "/EXT/bot/oafan"
 
     def __init__(self):
-        pass
+        self.__sender = BaseServiceSender(
+            self.client,
+            __class__.__name__,
+            self.__REQ_TYPE,
+            self.__RES_TYPE,
+            self.__ENDPOINT,
+        )
 
-    def activateSubscription(self, uniqueKey: str, activeStatus: str = 1):
+    def activateSubscription(self, uniqueKey: str, activeStatus: int = 1):
         """
         - activeStatus:
             INACTIVE(0),
             ACTIVE(1);
         """
-        params = [
-            [12, 1, [
-                [11, 1, uniqueKey],
-                [8, 2, activeStatus]
-            ]]
-        ]
-        sqrd = self.generateDummyProtocol(
-            'activateSubscription', params, self.OaMembershipService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(self.OaMembershipService_API_PATH, sqrd, self.OaMembershipService_RES_TYPE)
+        METHOD_NAME = "activateSubscription"
+        params = [[12, 1, [[11, 1, uniqueKey], [8, 2, activeStatus]]]]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def activateMembership(self, uniqueKey: str, activeStatus: str = 1):
+    def activateMembership(self, uniqueKey: str, activeStatus: int = 1):
         """
         - activeStatus:
             INACTIVE(0),
             ACTIVE(1);
         """
-        params = [
-            [12, 1, [
-                [11, 1, uniqueKey],
-                [8, 2, activeStatus]
-            ]]
-        ]
-        sqrd = self.generateDummyProtocol(
-            'activateMembership', params, self.OaMembershipService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(self.OaMembershipService_API_PATH, sqrd, self.OaMembershipService_RES_TYPE)
+        METHOD_NAME = "activateMembership"
+        params = [[12, 1, [[11, 1, uniqueKey], [8, 2, activeStatus]]]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def getJoinedMembership(self, uniqueKey: str):
+        METHOD_NAME = "getJoinedMembership"
         params = [
-            [12, 1, [
-                [11, 1, uniqueKey],
-            ]]
+            [
+                12,
+                1,
+                [
+                    [11, 1, uniqueKey],
+                ],
+            ]
         ]
-        sqrd = self.generateDummyProtocol(
-            'getJoinedMembership', params, self.OaMembershipService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(self.OaMembershipService_API_PATH, sqrd, self.OaMembershipService_RES_TYPE)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getJoinedMemberships(self):
+        METHOD_NAME = "getJoinedMemberships"
         params = []
-        sqrd = self.generateDummyProtocol(
-            'getJoinedMemberships', params, self.OaMembershipService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(self.OaMembershipService_API_PATH, sqrd, self.OaMembershipService_RES_TYPE)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getOrderInfo(self, uniqueKey: str):
+        METHOD_NAME = "getOrderInfo"
         params = [
-            [12, 1, [
-                [11, 1, uniqueKey],
-            ]]
+            [
+                12,
+                1,
+                [
+                    [11, 1, uniqueKey],
+                ],
+            ]
         ]
-        sqrd = self.generateDummyProtocol(
-            'getOrderInfo', params, self.OaMembershipService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(self.OaMembershipService_API_PATH, sqrd, self.OaMembershipService_RES_TYPE)
+        return self.__sender.send(METHOD_NAME, params)

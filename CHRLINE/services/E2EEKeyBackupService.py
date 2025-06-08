@@ -1,11 +1,22 @@
 # -*- coding: utf-8 -*-
 
-class E2EEKeyBackupService(object):
-    EKBS_REQ_TYPE = 4
-    EKBS_RES_TYPE = 4
-    
+from ..helper import ChrHelperProtocol
+from .BaseService import BaseServiceSender
+
+
+class E2EEKeyBackupService(ChrHelperProtocol):
+    __REQ_TYPE = 4
+    __RES_TYPE = 4
+    __ENDPOINT = "/EKBS4"
+
     def __init__(self):
-        pass
+        self.__sender = BaseServiceSender(
+            self.client,
+            __class__.__name__,
+            self.__REQ_TYPE,
+            self.__RES_TYPE,
+            self.__ENDPOINT,
+        )
 
     def createE2EEKeyBackup(self, blobHeader: str, blobPayload: str, reason: int):
         """
@@ -16,26 +27,16 @@ class E2EEKeyBackupService(object):
             FOREGROUND_NEW_PIN_REGISTERED(3),
             FOREGROUND_VERIFICATION(4);
         """
-        params = [
-            [12, 2, [
-                [11, 1, blobHeader],
-                [11, 2, blobPayload],
-                [8, 3, reason]
-            ]]
-        ]
-        sqrd = self.generateDummyProtocol('createE2EEKeyBackup', params, self.EKBS_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(self.LINE_E2EE_KEY_BACKUP_ENDPOINT, sqrd, self.EKBS_RES_TYPE)
+        METHOD_NAME = "createE2EEKeyBackup"
+        params = [[12, 2, [[11, 1, blobHeader], [11, 2, blobPayload], [8, 3, reason]]]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def getE2EEKeyBackupCertificates(self):
-        params = [
-            [12, 2, []]
-        ]
-        sqrd = self.generateDummyProtocol('getE2EEKeyBackupCertificates', params, self.EKBS_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(self.LINE_E2EE_KEY_BACKUP_ENDPOINT, sqrd, self.EKBS_RES_TYPE)
+        METHOD_NAME = "getE2EEKeyBackupCertificates"
+        params = [[12, 2, []]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def getE2EEKeyBackupInfo(self):
-        params = [
-            [12, 2, []]
-        ]
-        sqrd = self.generateDummyProtocol('getE2EEKeyBackupInfo', params, self.EKBS_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(self.LINE_E2EE_KEY_BACKUP_ENDPOINT, sqrd, self.EKBS_RES_TYPE)
+        METHOD_NAME = "getE2EEKeyBackupInfo"
+        params = [[12, 2, []]]
+        return self.__sender.send(METHOD_NAME, params)

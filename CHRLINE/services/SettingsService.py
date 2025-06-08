@@ -1,53 +1,65 @@
 # -*- coding: utf-8 -*-
 
-class SettingsService(object):
+from ..helper import ChrHelperProtocol
+from .BaseService import BaseServiceSender
+
+
+class SettingsService(ChrHelperProtocol):
+    __REQ_TYPE = 4
+    __RES_TYPE = 4
+    __ENDPOINT = "/US4"
 
     def __init__(self):
-        pass
+        self.__sender = BaseServiceSender(
+            self.client,
+            __class__.__name__,
+            self.__REQ_TYPE,
+            self.__RES_TYPE,
+            self.__ENDPOINT,
+        )
 
     def getSetting(self):
+        METHOD_NAME = "getSetting"
         params = []
-        sqrd = self.generateDummyProtocol('getSetting', params, 4)
-        return self.postPackDataAndGetUnpackRespData("/US4", sqrd, 4)
+        return self.__sender.send(METHOD_NAME, params)
 
     def contextAgnosticGetSetting(self):
+        METHOD_NAME = "contextAgnosticGetSetting"
         params = []
-        sqrd = self.generateDummyProtocol(
-            'contextAgnosticGetSetting', params, 4)
-        return self.postPackDataAndGetUnpackRespData("/US4", sqrd, 4)
+        return self.__sender.send(METHOD_NAME, params)
 
     def setSetting(self):
+        METHOD_NAME = "setSetting"
         params = []
-        sqrd = self.generateDummyProtocol('setSetting', params, 4)
-        return self.postPackDataAndGetUnpackRespData("/US4", sqrd, 4)
+        return self.__sender.send(METHOD_NAME, params)
 
     def setSettingWithScope(self):
+        METHOD_NAME = "setSettingWithScope"
         params = []
-        sqrd = self.generateDummyProtocol('setSettingWithScope', params, 4)
-        return self.postPackDataAndGetUnpackRespData("/US4", sqrd, 4)
+        return self.__sender.send(METHOD_NAME, params)
 
     def resetSetting(self):
+        METHOD_NAME = "resetSetting"
         params = []
-        sqrd = self.generateDummyProtocol('resetSetting', params, 4)
-        return self.postPackDataAndGetUnpackRespData("/US4", sqrd, 4)
+        return self.__sender.send(METHOD_NAME, params)
 
     def resetSettingWithScope(self):
+        METHOD_NAME = "resetSettingWithScope"
         params = []
-        sqrd = self.generateDummyProtocol('resetSettingWithScope', params, 4)
-        return self.postPackDataAndGetUnpackRespData("/US4", sqrd, 4)
+        return self.__sender.send(METHOD_NAME, params)
 
     def searchSettings(self):
+        METHOD_NAME = "searchSettings"
         params = []
-        sqrd = self.generateDummyProtocol('searchSettings', params, 4)
-        return self.postPackDataAndGetUnpackRespData("/US4", sqrd, 4)
+        return self.__sender.send(METHOD_NAME, params)
 
     def contextAgnosticSearchSettings(self):
+        METHOD_NAME = "contextAgnosticSearchSettings"
         params = []
-        sqrd = self.generateDummyProtocol(
-            'contextAgnosticSearchSettings', params, 4)
-        return self.postPackDataAndGetUnpackRespData("/US4", sqrd, 4)
+        return self.__sender.send(METHOD_NAME, params)
 
     def bulkGetSetting(self, settingItems: list = ["sticker.preview"]):
+        METHOD_NAME = "bulkGetSetting"
         settings = []
         for i in settingItems:
             settings.append([
@@ -58,8 +70,7 @@ class SettingsService(object):
                 [14, 1, [12, settings]]
             ]]
         ]
-        sqrd = self.generateDummyProtocol('bulkGetSetting', params, 4)
-        return self.postPackDataAndGetUnpackRespData("/US4", sqrd, 4)
+        return self.__sender.send(METHOD_NAME, params)
 
     def bulkSetSetting(self, settingItems: list = ["sticker.preview"], TypedValueItems: list = []):
         """
@@ -91,6 +102,7 @@ class SettingsService(object):
             then u can see "i32List", so values is a list (type: 15)
             so the data should be [15, 13, [8, values]]
         """
+        METHOD_NAME = "bulkSetSetting"
         settings = []
         c = 0
         for i in settingItems:
@@ -107,5 +119,4 @@ class SettingsService(object):
                 [14, 1, [12, settings]]
             ]]
         ]
-        sqrd = self.generateDummyProtocol('bulkGetSetting', params, 4)
-        return self.postPackDataAndGetUnpackRespData("/US4", sqrd, 4)
+        return self.__sender.send(METHOD_NAME, params)

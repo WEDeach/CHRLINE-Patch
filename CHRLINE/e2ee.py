@@ -29,7 +29,7 @@ class E2EE(ChrHelperProtocol):
         self.__e2ee_key_id = None
         self.__cache_key = {}
         r = self.client.getE2EEPublicKeys()
-        if isinstance(r, list):
+        if isinstance(r, list) and len(r) > 0:
             self.__e2ee_key_id = r[0][2]
             try:
                 selfKeyData = self.client.getE2EESelfKeyData(self.client.mid)

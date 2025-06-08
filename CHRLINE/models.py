@@ -410,6 +410,7 @@ class Models(ChrHelperProtocol):
         expectedRespCode: Optional[list] = None,
         timeout: Optional[int] = None,
     ):
+        logger = self.__logger.overload("GATE")
         if expectedRespCode is None:
             expectedRespCode = [200]
         if headers is None:
@@ -455,7 +456,7 @@ class Models(ChrHelperProtocol):
             True,
         )
         self.client.log(
-            f"--> {bdata.hex()[:50]}",
+            f"--> {bdata.hex()}",
             True,
         )
         if encType == 0:
@@ -518,7 +519,7 @@ class Models(ChrHelperProtocol):
         else:
             raise Exception(f"Unknown encType: {encType}")
         self.client.log(f"<--  {res.status_code}", True)
-        self.client.log(f"{data.hex()[:50]}", True)
+        self.client.log(f"{data.hex()}", True)
         if res.status_code in expectedRespCode:
             if (
                 res.headers.get("x-lc") is not None
@@ -650,7 +651,7 @@ class Models(ChrHelperProtocol):
                             path, bdata, ttype, encType, headers
                         )
                     self.client.log(f"LOGIN OUT: {resMsg}")
-                print(res)
+                logger.error(res)
                 raise LineServiceException(res["error"])
             self.client.log(f"Result: {res}", True)
             self.client.log("----------------- END POST", True)
@@ -830,17 +831,17 @@ class Models(ChrHelperProtocol):
 
     def decodeE2EEKeyV1(self, data: dict, secret: bytes, mid: Optional[str] = None):
         if "encryptedKeyChain" in data:
-            print("Try to decode E2EE Key")
+            self.__logger.debug("Try to decode E2EE Key")
             encryptedKeyChain = base64.b64decode(data["encryptedKeyChain"])
             # hashKeyChain = data['hashKeyChain']
             keyId = data["keyId"]
             publicKey = base64.b64decode(data["publicKey"])
             e2eeVersion = data["e2eeVersion"]
             e2eeKey = self.client.decryptKeyChain(publicKey, secret, encryptedKeyChain)
-            print(f"E2EE Priv Key: {e2eeKey[0]}")
-            print(f"E2EE Pub Key: {e2eeKey[1]}")
-            print(f"keyId: {keyId}")
-            print(f"e2eeVersion: {e2eeVersion}")
+            self.__logger.debug(f"E2EE Priv Key: {e2eeKey[0]}")
+            self.__logger.debug(f"E2EE Pub Key: {e2eeKey[1]}")
+            self.__logger.debug(f"keyId: {keyId}")
+            self.__logger.debug(f"e2eeVersion: {e2eeVersion}")
             self.saveE2EESelfKeyData(mid, e2eeKey[1], e2eeKey[0], keyId, e2eeVersion)
             return {
                 "keyId": keyId,
@@ -883,7 +884,7 @@ class Models(ChrHelperProtocol):
                     _data[fid].append(_aaa)
                     offset += _bbb + 1
         else:
-            print(f"[tryReadThriftContainerStruct]不支援Type: {ftype} => ID: {fid}")
+            self.__logger.warning(f"[tryReadThriftContainerStruct]不支援Type: {ftype} => ID: {fid}")
         if nextPos > 0:
             data = data[nextPos:]
             c = self.tryReadThriftContainerStruct(data, id=fid, get_data_len=True)

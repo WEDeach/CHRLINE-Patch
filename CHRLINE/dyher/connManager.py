@@ -72,9 +72,9 @@ class ConnManager(object):
         _conn = self.conns[0]
         FLAG = 0
         _conn.wirteRequest(0, bytes([0, FLAG, self._pingInterval]))
-        self.log(f"send status frame. flag:{FLAG}, pi:{self._pingInterval}")
+        self.log(f"send status frame. flag:{FLAG}, pi:{self._pingInterval}", True)
         for service in initServices:
-            self.log(f"Init service: {service}")
+            self.log(f"Init service: {service}", True)
             ex_val = {}
             if service == 3:
                 subscriptionId = int(time.time() * 1000)
@@ -86,7 +86,7 @@ class ConnManager(object):
                     "syncToken": syncToken,
                 }
                 self.log(
-                    f"request fetchMyEvent({subscriptionId}), syncToken:{syncToken}"
+                    f"request fetchMyEvent({subscriptionId}), syncToken:{syncToken}", True
                 )
                 self.subscriptionIds = {}  # clear
             elif service in [5, 8]:
@@ -98,7 +98,7 @@ class ConnManager(object):
                     "fullSyncRequestReason": None,
                     "lastPartialFullSyncs": None,
                 }
-                self.log(f"request talk fetcher: {ex_val}")
+                self.log(f"request talk fetcher: {ex_val}", True)
             self.buildAndSendSignOnRequest(_conn, service, **ex_val)
         self.log("CONN start read push.")
         _conn.read()

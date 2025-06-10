@@ -5700,8 +5700,9 @@ class TalkServiceHandler(BaseServiceHandler):
         isDebugOnly = True
         operationResponse = cl.checkAndGetValue(res, "operationResponse", 1)
         fullSyncResponse = cl.checkAndGetValue(res, "fullSyncResponse", 2)
-        partialFullSyncResponse = cl.checkAndGetValue(res, "partialFullSyncResponse", 2)
+        partialFullSyncResponse = cl.checkAndGetValue(res, "partialFullSyncResponse", 3)
         ll.debug(f"Resp: {res}")
+        syncParams = {}
         if operationResponse is not None:
             ops = cl.checkAndGetValue(operationResponse, "operations", 1)
             hasMoreOps = cl.checkAndGetValue(operationResponse, "hasMoreOps", 2)
@@ -5715,7 +5716,6 @@ class TalkServiceHandler(BaseServiceHandler):
                 if isinstance(lastRevision, int):
                     cl.globalRev = lastRevision
                     ll.info(f"new globalRev: {cl.globalRev}")
-                    ll.debug(f"globalEvents: {events}")
 
             if individualEvents is not None:
                 events = cl.checkAndGetValue(individualEvents, "events", 1)
@@ -5723,7 +5723,6 @@ class TalkServiceHandler(BaseServiceHandler):
                 if isinstance(lastRevision, int):
                     cl.individualRev = lastRevision
                     ll.info(f"new individualRev: {cl.individualRev}")
-                    ll.debug(f"individualEvents: {events}")
             ll.debug(f"operations: {ops}")
             return 1, ops
         elif fullSyncResponse is not None:
@@ -5733,6 +5732,16 @@ class TalkServiceHandler(BaseServiceHandler):
             if not isinstance(syncRevision, int):
                 raise ValueError
             ll.info(f"got fullSyncResponse: {reasons}")
-            return 2, syncRevision - 1
+            syncParams = {
+                "revision": syncRevision
+            }
+        elif partialFullSyncResponse is not None:
+            ll.info(f"got partialFullSyncResponse: {partialFullSyncResponse}")
+            targetCategories = cl.checkAndGetValue(partialFullSyncResponse, "targetCategories", 1)
+            syncParams = {
+                "revision": cl.revision,
+                "lastPartialFullSyncs": targetCategories
+            }
         else:
-            raise EOFError(f"[SyncHandler] sync failed, unknown response: {res}")
+            raise EOFError(f"[SyncHandler] SyncResponse must include one of the response about operation / full sync / partial full sync: {res}")
+        return 2, syncParams

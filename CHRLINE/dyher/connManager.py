@@ -86,7 +86,8 @@ class ConnManager(object):
                     "syncToken": syncToken,
                 }
                 self.log(
-                    f"request fetchMyEvent({subscriptionId}), syncToken:{syncToken}", True
+                    f"request fetchMyEvent({subscriptionId}), syncToken:{syncToken}",
+                    True,
                 )
                 self.subscriptionIds = {}  # clear
             elif service in [5, 8]:
@@ -303,7 +304,7 @@ class ConnManager(object):
                         ops = resp
                         sht, shd = cl.talk_handler.SyncHandler(resp)
                         ex_val = {
-                            "revision": cl.globalRev,
+                            "revision": cl.revision,
                             "count": 100,
                             "globalRev": cl.globalRev,
                             "individualRev": cl.individualRev,
@@ -323,11 +324,13 @@ class ConnManager(object):
                                     self.hook_callback(cl, serviceType, op)
                                 revision = cl.checkAndGetValue(op, "revision", 1)
                                 cl.setRevision(revision)
-                        elif sht == 2:
-                            cl.setRevision(shd)
+                            ex_val["revision"] = cl.revision
+                        elif sht == 2 and isinstance(shd, dict):
+                            ex_val.update(shd)
+                            cl.setRevision(ex_val["revision"])
                         else:
                             raise RuntimeError
-                        ex_val["revision"] = cl.revision
+                        self.log(f"request talk fetcher:{ex_val}", True)
                         self.buildAndSendSignOnRequest(_conn, serviceType, **ex_val)
                         return
                     elif methodName == "fetchOps":

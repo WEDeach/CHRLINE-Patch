@@ -10,7 +10,6 @@ from os import system
 
 from .api import API
 from .config import Config
-from .cube import LineCube
 from .e2ee import E2EE
 from .exceptions import LineServiceException
 from .helper import ChrHelper
@@ -32,7 +31,6 @@ class CHRLINE(
     Object,
     Timeline,
     TimelineBiz,
-    LineCube,
     E2EE,
 ):
     def __init__(
@@ -195,7 +193,6 @@ class CHRLINE(
         TimelineBiz.__init__(self)
         Poll.__init__(self)
         Object.__init__(self)
-        LineCube.__init__(self)
 
         self.is_login = True
 

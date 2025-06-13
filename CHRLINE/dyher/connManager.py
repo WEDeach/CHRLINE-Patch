@@ -73,7 +73,7 @@ class ConnManager(object):
         cl = self.line_client
         _conn = self.conns[0]
         FLAG = 0
-        _conn.wirteRequest(0, bytes([0, FLAG, self._pingInterval]))
+        _conn.writeRequest(0, bytes([0, FLAG, self._pingInterval]))
         self.log(f"send status frame. flag:{FLAG}, pi:{self._pingInterval}", True)
         for service in initServices:
             self.log(f"Init service: {service}", True)
@@ -210,7 +210,7 @@ class ConnManager(object):
             f"[H2][PUSH] send sign-on-request. requestId:{_id}, service:{serviceType}",
             True,
         )
-        conn.wirteRequest(2, _payload)
+        conn.writeRequest(2, _payload)
         return _payload, _id
 
     def buildFetchMyEventsRequest(self, subscriptionId, syncToken):

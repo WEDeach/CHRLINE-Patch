@@ -70,7 +70,7 @@ class Conn(object):
         else:
             raise RuntimeError
 
-    def wirteRequest(self, requestType: int, data: bytes):
+    def writeRequest(self, requestType: int, data: bytes):
         d = self.manager.buildRequest(requestType, data)
         self.writeByte(d)
 

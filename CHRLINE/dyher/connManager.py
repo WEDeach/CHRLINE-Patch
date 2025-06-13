@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 from ..client import CHRLINE
 from ..services import *
+from ..utils.common import get_host_and_port
 from .connData import LegyH2PushFrame, LegyPushOABot, LegyPushOABotTyping
 
 
@@ -61,7 +62,8 @@ class ConnManager(object):
         }
         m = gen_m(initServices)
         self.log(f"Using `m={m}` on `/PUSH`")
-        _conn.new("gw.line.naver.jp", 443, f"/PUSH/1/subs?m={m}", tosend_headers)
+        host, port = get_host_and_port(self.line_client.LINE_HOST_DOMAIN)
+        _conn.new(host, port, f"/PUSH/1/subs?m={m}", tosend_headers)
         return _conn
 
     def InitAndRead(self, initServices: list = [3, 5]):

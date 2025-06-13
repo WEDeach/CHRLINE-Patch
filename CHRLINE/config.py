@@ -1,71 +1,18 @@
 # -*- coding: utf-8 -*-
+import os
 import re
 from typing import Optional
 
 
 class Config(object):
-    LINE_HOST_DOMAIN = "https://ga2.line.naver.jp"
-    LINE_LEGY_HOST_DOMAIN = "https://legy-jp.line.naver.jp"
-    LINE_GW_HOST_DOMAIN = "https://gwz.line.naver.jp"
-    LINE_GF_HOST_DOMAIN = "https://gf.line.naver.jp"
-    LINE_GD2_HOST_DOMAIN = "https://gd2.line.naver.jp"
-    LINE_GD2K_HOST_DOMAIN = "https://gd2k.line.naver.jp"
-    LINE_GD2S_HOST_DOMAIN = "https://gd2s.line.naver.jp"
-    LINE_GD2G_HOST_DOMAIN = "https://gd2g.line.naver.jp"
-    LINE_GD2U_HOST_DOMAIN = "https://gd2u.line.naver.jp"
-    LINE_GD2V_HOST_DOMAIN = "https://gd2v.line.naver.jp"
-    LINE_GD2I_HOST_DOMAIN = "https://gd2i.line.naver.jp"
-    LINE_GD2W_HOST_DOMAIN = "https://gd2w.line.naver.jp"
+    LINE_HOST_DOMAIN = os.getenv("LINE_HOST_DOMAIN", "http://localhost:8111")
+    LINE_OBS_DOMAIN = os.getenv("LINE_OBS_DOMAIN", "http://localhost:8112")
+    LINE_API_DOMAIN = os.getenv("LINE_API_DOMAIN", "http://localhost:8113")
+    LINE_ACCESS_DOMAIN = os.getenv("LINE_ACCESS_DOMAIN", "http://localhost:8114")
 
-    LINE_OBS_DOMAIN = "https://obs.line-apps.com"
-
-    LINE_OBS_CDN_DOMAIN = "https://obs.line-scdn.net"
-    LINE_PROFILE_CDN_DOMAIN = "https://profile.line-scdn.net"
-    LINE_SHOP_CDN_DOMAIN = "https://shop.line-scdn.net"
-    LINE_STICKERSHOP_CDN_DOMAIN = "https://stickershop.line-scdn.net"
-    LINE_ECBOT_OBJ_CDN_DOMAIN = "https://ecbot-object.line-scdn.net"  # LINE購物護照
-    LINE_SEARCH_CDN_DOMAIN = "https://search.line-scdn.net"
-    LINE_STATIC_CDN_DOMAIN = "https://static.line-scdn.net"
-    LINE_VOS_CDN_DOMAIN = "https://vos.line-scdn.net"
-    LINE_SHOPPING_CDN_DOMAIN = "https://shopping.line-scdn.net"
-
-    LINE_LAN_DOMAIN = "https://lan.line.me"
-
-    LINE_LEGY_BETA_DOMAIN = "https://legy-beta.line-apps-beta.com"
-    LINE_OBS_BETA_DOMAIN = "https://obs-beta.line-apps.com"
-    LINE_OBS_CDN_BETA_DOMAIN = "https://cdn-obs-beta.line-apps.com/line"
-    LINE_SHOP_DL_BETA_DOMAIN = "https://dl.shop.line.beta.naver.jp"
-    LINE_STICKERSHOP_DL_BETA_DOMAIN = "https://dl.stickershop.line.beta.naver.jp"
-    LINE_LAN_BETA_DOMAIN = "https://lan.line-beta.me"
-    LINE_NOTICE_CDN_DOMAIN = "https://notice.line-beta.me"
-    LINE_SCDN_APP_DOMAIN = "https://scdn.line-apps.com"
-    LINE_YUKI_CDN_APP_DOMAIN = "https://yuki-cdn.line-apps.com"
-    LINE_UTRACK_APP_DOMAIN = "https://uts-front.line-apps.com"
-
-    LINE_LEGY_RC_DOMAIN = "https://legy-rc.line-apps-rc.com"
-    LINE_OBS_RC_DOMAIN = "https://obs-rc.line-apps.com"
-    LINE_OBS_CDN_RC_DOMAIN = "https://dl.common.line.naver.jp"
-
-    LINE_NOTICE_DOMAIN = "https://notice.line.me"
-    LINE_TV_DOMAIN = "https://tv.line.me"
-    LINE_TV2_DOMAIN = "https://www.linetv.tw"
-    LINE_STORE_DOMAIN = "https://store.line.me"
-    LINE_MELODY_DOMAIN = "https://melody.line.me"
-    LINE_POD_GAME_DOMAIN = "https://pod.game.line.me"
-    LINE_WEBTOONS_DOMAIN = "https://www.webtoons.com"
-    LINE_LINEFRIENDS_STORE_DOMAIN = "https://store.linefriends.com"
-    LINE_LINEFRIENDS_TW_DOMAIN = "https://www.linefriends.com.tw"
-    LINE_LINEFRIENDS_JP_DOMAIN = "https://www.linefriends.jp"
-    LINE_SHOP_DOMAIN = "https://shop.line.me"
-    LINE_BUY_DOMAIN = "https://buy.line.me"
-    LINE_TODAY_DOMAIN = "https://today.line.me"
-    LINE_TRAVEL_DOMAIN = "https://travel.line.me"
-    LINE_FACTCHECKER_DOMAIN = "https://fact-checker.line.me"
-    LINE_MUSIC_DOMAIN = "https://music.line.me"
-    LINE_LIVE_DOMAIN = "https://live.line.me"
-    LINE_MANGA_DOMAIN = "https://manga.line.me"
-    LINE_EVENT_DOMAIN = "https://event.line.me"
-    LINE_SEARCH_DOMAIN = "https://search.line.me"
+    LINE_BIZ_TIMELINE_DOMAIN = os.getenv(
+        "LINE_BIZ_TIMELINE_DOMAIN", "http://localhost:8121"
+    )
 
     LINE_ENCRYPTION_ENDPOINT = "/enc"
     LINE_AGE_CHECK_ENDPOINT = "/ACS4"
@@ -108,12 +55,6 @@ class Config(object):
     SECONDARY_DEVICE_LOGIN_VERIFY_PIN_WITH_E2EE = "/LF1"
     SECONDARY_DEVICE_LOGIN_VERIFY_PIN = "/Q"
     LINE_NOTIFY_SLEEP_ENDPOINT = "/F4"
-
-    LINE_LAN_ANDROID_URL = "https://lan.line.me/v1/line/android/notification"
-    LINE_LAN_IOS_URL = "https://lan.line.me/v1/line/ios/notification"
-    LINE_MUSIC_WEBAPP_URL = "https://music.line.me/webapp"
-    LINE_AMP_LOG_URL = "https://log1-amp.line-apps.com/log"
-    LINE_SECONDYARY_REGISTER_API_URL = "https://w.line.me/lrs/r"
 
     LINE_LANGUAGE = "zh-Hant_TW"
     LINE_SERVICE_REGION = "TW"
@@ -217,10 +158,16 @@ class Config(object):
             pass
         elif type == "INTERNAL":
             pass
+        elif type == "VISIONOS":
+            self.APP_VER = ""
+            self.SYSTEM_NAME = "visionOS"
+            self.SYSTEM_MODEL = "RealityDevice14,1"
         else:
             raise Exception("未知的Device , 請至 config.py 新增")
         self.APP_TYPE = type
         self.USER_AGENT = "Line/%s" % self.APP_VER
+
+        self.reloadDomains()
 
     def initAppConfig(
         self,
@@ -259,11 +206,20 @@ class Config(object):
             _desktop = "MAC"
             if self.APP_TYPE == "DESKTOPWIN":
                 _desktop = "WINDOWS"
-            self.USER_AGENT = (
-                f"DESKTOP:{_desktop}:{self.SYSTEM_NAME}({self.SYSTEM_VER})"
-            )
+            self.USER_AGENT = f"DESKTOP:{_desktop}:{self.SYSTEM_NAME}({self.APP_VER})"
         else:
             self.USER_AGENT = (
                 f"Line/{self.APP_VER} {self.SYSTEM_MODEL} {self.SYSTEM_VER}"
             )
         return self.USER_AGENT
+
+    def reloadDomains(self):
+        self.LINE_HOST_DOMAIN = os.getenv("LINE_HOST_DOMAIN", "http://localhost:8111")
+        self.LINE_OBS_DOMAIN = os.getenv("LINE_OBS_DOMAIN", "http://localhost:8112")
+        self.LINE_API_DOMAIN = os.getenv("LINE_API_DOMAIN", "http://localhost:8113")
+        self.LINE_ACCESS_DOMAIN = os.getenv(
+            "LINE_ACCESS_DOMAIN", "http://localhost:8114"
+        )
+        self.LINE_BIZ_TIMELINE_DOMAIN = os.getenv(
+            "LINE_BIZ_TIMELINE_DOMAIN", "http://localhost:8121"
+        )

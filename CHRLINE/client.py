@@ -1,24 +1,15 @@
+from os import system
 from typing import Any, List, Optional
 
-import gevent.monkey
-
-from .services.thrift.ttypes import SquareException
-
-gevent.monkey.patch_all()
-
-from os import system
-
 from .api import API
+from .BIZ.manager import BizManager
 from .config import Config
 from .e2ee import E2EE
-from .exceptions import LineServiceException
 from .helper import ChrHelper
 from .models import Models
 from .object import Object
 from .poll import Poll
 from .thrift import Thrift
-from .timeline import Timeline
-from .timelineBiz import TimelineBiz
 
 
 class CHRLINE(
@@ -29,8 +20,6 @@ class CHRLINE(
     Thrift,
     Poll,
     Object,
-    Timeline,
-    TimelineBiz,
     E2EE,
 ):
     def __init__(
@@ -105,7 +94,7 @@ class CHRLINE(
             customDataId = "CHRLINE_CUSTOM_0"
         self.customDataId = customDataId
         self.can_use_square = False
-        self.squares: Any = None
+        self.__squares: Any = None
         ChrHelper.__init__(self, cl=self)
         self.logger = self.get_logger()
         if self.isDebug:
@@ -121,6 +110,7 @@ class CHRLINE(
         self.is_login = False
         self.use_thrift = useThrift
         self.force_tmore = forceTMCP
+        self.LINE_SERVICE_REGION = ""
         if region is not None:
             self.LINE_SERVICE_REGION = region
 
@@ -165,14 +155,15 @@ class CHRLINE(
         mid = self.checkAndGetValue(self.profile, "mid", 1)
         if not isinstance(mid, str):
             raise TypeError(
-                "`mid` expected type `str`, but got type `%s`: %r"
-                % (type(mid), mid)
+                "`mid` expected type `str`, but got type `%s`: %r" % (type(mid), mid)
             )
         self.mid = mid
+        __regionCode = self.checkAndGetValue(self.profile, "regionCode", 12)
         __displayName = self.checkAndGetValue(self.profile, "displayName", 20)
         self.logger.info(
             f"[{__displayName}] 登入成功 ({self.mid}) / {self.DEVICE_TYPE}"
         )
+        self.LINE_SERVICE_REGION = __regionCode
         if self.customDataId is None:
             self.customDataId = self.mid
         try:
@@ -189,22 +180,17 @@ class CHRLINE(
             self.groups = []
 
         E2EE.__init__(self)
-        Timeline.__init__(self)
-        TimelineBiz.__init__(self)
+        self.biz = BizManager(self)
         Poll.__init__(self)
         Object.__init__(self)
 
         self.is_login = True
-
-        self.can_use_square = False
-        try:
-            _squares = self.getJoinedSquares()
-            self.can_use_square = True
-            self.squares = _squares
-        except SquareException as e:
-            self.log(f"Not support Square: {getattr(e, 'reason')}")
-        except LineServiceException as e:
-            self.log(f"Not support Square: {e.message}")
-
         self.custom_data = {}
         self.getCustomData()
+
+    @property
+    def squares(self):
+        if self.__squares is None:
+            self.__squares = self.getJoinedSquares()
+            self.can_use_square = True
+        return self.__squares

@@ -9,6 +9,11 @@ from urllib import parse
 
 import httpx
 
+from .BIZ.services.internal.define_typed.Album import (
+    ResourceTypeMap,
+    TAlbumPhoto,
+    TAlbumResourceType,
+)
 from .helper import ChrHelperProtocol
 
 MediaNextTypeSets = {
@@ -83,9 +88,9 @@ class Object(ChrHelperProtocol):
         self.__logger = self.client.get_logger("OBS")
         self._flows = {}
 
-    """ 
+    """
 
-    TimelineObs 
+    TimelineObs
     Source: https://github.com/DeachSword/LINE-DemoS-Bot/blob/master/api/obs/obs.py
 
     """
@@ -194,11 +199,13 @@ class Object(ChrHelperProtocol):
             _url, _vc_url, _objId, _vc_objId = self.client.getProfileCoverObjIdAndUrl(
                 self.client.mid
             )
-            home = self.client.updateProfileCoverById(
-                _objId, f"{objId}/vp", storyShare=storyShare
+            home = self.client.biz.myhome_renewal.update_cover_renewal(
+                self.client.mid, coverObjectId=_objId, videoCoverObjectId=f"{objId}/vp"
             )
         else:
-            home = self.client.updateProfileCoverById(objId, storyShare=storyShare)
+            home = self.client.biz.myhome_renewal.update_cover_renewal(
+                self.client.mid, coverObjectId=objId
+            )
         return home
 
     def updateChatProfileImage(self, groupId: str, path: str, oType: str = "IMAGE"):
@@ -220,12 +227,12 @@ class Object(ChrHelperProtocol):
             raise Exception(f"updateChatProfileImage failure: {e}")
         return True
 
-    def updateImage2Album(
+    def updateImageToAlbum(
         self,
         homeId: str,
-        albumId: Union[str, int],
+        albumId: int,
         pathOrBytes: Union[str, bytes, List[Union[str, bytes]]],
-        oType: str = "IMAGE",
+        oType: TAlbumResourceType = "IMAGE",
         updateAlbum: bool = True,
     ):
         """
@@ -235,7 +242,11 @@ class Object(ChrHelperProtocol):
         ---------------
         Return `OBS_OID` and `OBS_HASH`
         """
+        if oType not in ResourceTypeMap.keys():
+            raise TypeError(f"Not support resource type: {oType}")
+        resourceType = ResourceTypeMap[oType]
         oids = []
+        photos: List[TAlbumPhoto] = []
         additionalHeaders = {
             "X-Line-Album": str(albumId),
             "X-Line-Mid": homeId,
@@ -248,15 +259,25 @@ class Object(ChrHelperProtocol):
             obsObjId, obsHash, respHeaders = self.uploadObjectForService(
                 _uploadData,
                 oType,
-                f"album/a/{oid}",
+                f"album/{resourceType}/{oid}",
                 issueToken4ChannelId="1341209850",
                 params=params,
                 additionalHeaders=additionalHeaders,
             )
             oids.append(obsObjId)
+            photos.append(
+                {
+                    "obsResourceId": {"svc": "album", "sid": resourceType, "oid": oid},
+                    "resourceType": oType,
+                    "height": 0,
+                    "width": 0,
+                    "shotTime": 0,
+                    "durationMillis": 0,
+                }
+            )
         if updateAlbum:
-            self.client.addImageToAlbum(homeId, albumId, oids)
-        return oids
+            self.client.biz.album.add_photos(homeId, albumId=albumId, photos=photos)
+        return photos
 
     def uploadObjHome(self, path, type="image", objId=None):
         if type == "image":

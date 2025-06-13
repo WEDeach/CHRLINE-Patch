@@ -31,7 +31,6 @@ from .serializers.DummyProtocol import (
 from .services.thrift import *
 from .services.thrift.ap.TCompactProtocol import TCompactProtocol as tcProtocol
 from .services.thrift.ttypes import TalkException
-from .timeline import Timeline
 from .utils.patchs import p_patch_all
 
 
@@ -55,6 +54,7 @@ class Models(ChrHelperProtocol):
 
         # Init 3rd Models
         from .dyher.connManager import ConnManager
+
         p_patch_all()
 
         self.legyPushers = ConnManager(self.client)
@@ -102,7 +102,7 @@ class Models(ChrHelperProtocol):
         open(savePath + f"/{fn}", "w").write(newToken)
         self.authToken = newToken
         self.client.log(f"New Token: {newToken}")
-        Timeline.__init__(self.client)
+        self.client.biz.renew_tokens()
 
     def tryRefreshToken(self):
         """Try to refresh token."""
@@ -471,7 +471,7 @@ class Models(ChrHelperProtocol):
             res = doLoopReq(
                 conn.post,
                 {
-                    "url": self.client.LINE_GW_HOST_DOMAIN + path,
+                    "url": self.client.LINE_HOST_DOMAIN + path,
                     "data": data,
                     "headers": headers,
                     "files": files,
@@ -502,7 +502,7 @@ class Models(ChrHelperProtocol):
             res = doLoopReq(
                 conn.post,
                 {
-                    "url": self.client.LINE_GF_HOST_DOMAIN
+                    "url": self.client.LINE_HOST_DOMAIN
                     + self.client.LINE_ENCRYPTION_ENDPOINT,
                     "data": data,
                     "files": files,
@@ -884,7 +884,9 @@ class Models(ChrHelperProtocol):
                     _data[fid].append(_aaa)
                     offset += _bbb + 1
         else:
-            self.__logger.warning(f"[tryReadThriftContainerStruct]不支援Type: {ftype} => ID: {fid}")
+            self.__logger.warning(
+                f"[tryReadThriftContainerStruct]不支援Type: {ftype} => ID: {fid}"
+            )
         if nextPos > 0:
             data = data[nextPos:]
             c = self.tryReadThriftContainerStruct(data, id=fid, get_data_len=True)
@@ -998,7 +1000,7 @@ class Models(ChrHelperProtocol):
                 else setattr(refs, f"val_{c.id}", c)
             )
             return r
-        
+
         if data.data is not None:
             b(data.data, a)
             check_miss(a)
@@ -1009,7 +1011,9 @@ class Models(ChrHelperProtocol):
         for field_name in a.field_names:
             field = getattr(a.thrift_ins, field_name)
             if field is not None:
-                if isinstance(field, DummyThrift) and isinstance(field.thrift_ins, Exception):
+                if isinstance(field, DummyThrift) and isinstance(
+                    field.thrift_ins, Exception
+                ):
                     raise field.thrift_ins
                 return field
 
@@ -1078,7 +1082,7 @@ def doLoopReq(
     except httpx.ReadError as ex:
         doRetry = True
         e = ex
-    except (httpx.ConnectError or requests.exceptions.ConnectionError) as ex:
+    except httpx.ConnectError or requests.exceptions.ConnectionError as ex:
         currCount -= 1
         retryTimeDelay += 1
         doRetry = True

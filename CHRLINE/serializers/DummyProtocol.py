@@ -388,7 +388,7 @@ class DummyThrift:
         d = self.dd()
         d.update(self.dd_loc())
         return d
-    
+
     def __getitem__(self, index):
         # PRIORITY: thrift > dummy
         r = self.thrift_ins
@@ -402,6 +402,9 @@ class DummyThrift:
                     if fid == index:
                         return getattr(r, fname)
         return getattr(self, f"val_{index}")
+
+    def __iter__(self):
+        return iter(self.dd().items())
 
     def __setitem__(self, key, value):
         return self.__setattr__(f"val_{key}", value)

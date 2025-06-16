@@ -1,3 +1,4 @@
+from typing import Any
 
 
 @classmethod
@@ -9,17 +10,22 @@ def f_enum_missing(cls, value):
         return m
     raise ValueError
 
+
 def p_json_serializable():
     # https://stackoverflow.com/a/68926979
 
     from json import JSONEncoder
+
     def wrapped_default(self, obj):
-        return getattr(obj.__class__, "__json__", wrapped_default.default)(obj)
+        fn: Any = getattr(obj.__class__, "__json__", wrapped_default.default)
+        return fn(obj)
+
     wrapped_default.default = JSONEncoder().default
-    
+
     # apply the patch
-    JSONEncoder.original_default = JSONEncoder.default
-    JSONEncoder.default = wrapped_default
+    setattr(JSONEncoder, "original_default", JSONEncoder.default)
+    setattr(JSONEncoder, "default", wrapped_default)
+
 
 def p_patch_all():
     from enum import Enum

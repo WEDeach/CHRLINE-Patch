@@ -1,6 +1,8 @@
 import time
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Dict, Optional, TypedDict, Union
+from typing import TYPE_CHECKING, Dict, Optional, TypedDict, Union
+
+import requests
 
 from ..logger import Logger
 
@@ -70,6 +72,7 @@ class BaseBIZApi(BaseBIZ, BIZApiProtocol):
     __version: int
     __prefix: Union[str, None]
     __logger: Union[Logger, None]
+    __session: Union[requests.Session, None]
 
     def __init__(
         self, client: Optional["CHRLINE"], *, version: int, prefix: Optional[str] = None
@@ -80,6 +83,7 @@ class BaseBIZApi(BaseBIZ, BIZApiProtocol):
         self.__version = version
         self.__prefix = prefix
         self.__logger = None
+        self.__session = None
 
     @property
     def version(self):
@@ -107,6 +111,12 @@ class BaseBIZApi(BaseBIZ, BIZApiProtocol):
             return self.client.LINE_HOST_DOMAIN
         return self.__domain
 
+    @property
+    def session(self):
+        if self.__session is None:
+            self.__session = requests.session()
+        return self.__session
+
     def url_with_prefix(self, path: str):
         return self.prefix + path
 
@@ -123,10 +133,13 @@ class BaseBIZApi(BaseBIZ, BIZApiProtocol):
         *,
         headers: Optional[dict] = None,
         params: Optional[dict] = None,
-        data: Optional[Any] = None,
+        data: Optional[dict] = None,
         json: Optional[Union[Dict, TypedDict]] = None,
         required_time: bool = False,
     ):
+        if params is not None:
+            # 某些值實際上為可選, 一旦提供都會造成錯誤
+            params = {k: v for k, v in params.items() if v is not None}
         url = self.client.server.urlEncode(self.domain, path, params)
         if headers is not None:
             if "X-LPV" in headers.keys():
@@ -151,11 +164,9 @@ class BaseBIZApi(BaseBIZ, BIZApiProtocol):
             headers["X-Line-App-Request-Time"] = str(int(time.time() * 1000))
         if json is not None:
             headers["Content-Type"] = "application/json; charset=UTF-8"
-        self.logger.debug(f"--> {method} '{path}'")
+        self.logger.debug(f"--> {method} '{url}'")
         self.logger.debug(f"--> Headers: {headers}")
         self.logger.debug(f"--> Data: {data or json}")
-        r = self.client.server._session.request(
-            method, url, headers=headers, data=data, json=json
-        )
+        r = self.session.request(method, url, headers=headers, data=data, json=json)
         self.logger.debug(f"<-- {r.status_code} {r.content}")
         return r

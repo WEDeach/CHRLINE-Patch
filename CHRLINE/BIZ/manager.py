@@ -40,6 +40,7 @@ class BizManager(BaseBIZ):
         self.translation = Translation(self.client, -1)
 
         self.__t_timeline: Union[str, None] = None
+        self.__t_album: Union[str, None] = None
         self.__t_cms: Union[str, None] = None
 
     @property
@@ -49,16 +50,23 @@ class BizManager(BaseBIZ):
             TIMELINE_CHANNEL_ID = "1341209950"
             if self.client.APP_TYPE in ["CHROMEOS"]:
                 TIMELINE_CHANNEL_ID = "1341209850"
-            self.__t_timeline = self.client.checkAndGetValue(
-                self.client.approveChannelAndIssueChannelToken(TIMELINE_CHANNEL_ID),
-                "channelAccessToken",
-                5,
-            )
+            self.__t_timeline = self.issue_access_token_for_channel(TIMELINE_CHANNEL_ID)
             if not isinstance(self.__t_timeline, str):
                 raise ValueError(
                     f"can't use Timeline, the token return `{self.__t_timeline}`"
                 )
         return self.__t_timeline
+
+    @property
+    def token_with_album(self):
+        """Get token for Album."""
+        if self.__t_album is None:
+            self.__t_album = self.issue_access_token_for_channel("1375220249")
+            if not isinstance(self.__t_album, str):
+                raise ValueError(
+                    f"can't use Album, the token return `{self.__t_album}`"
+                )
+        return self.__t_album
 
     @property
     def token_with_cms(self):
@@ -86,12 +94,17 @@ class BizManager(BaseBIZ):
             "X-LAP": "5",
             "X-LPV": "1",
             "X-LSR": self.client.LINE_SERVICE_REGION,
-            "X-Line-BDBTemplateVersion": "v1",
-            "x-line-global-config": "discover.enable=true; follow.enable=true",
             "Content-Type": "application/json; charset=UTF-8",
             # "X-Line-PostShare": "true"
             # "X-Line-StoryShare": "true"
         }
+
+    def issue_access_token_for_channel(self, channelId: str):
+        return self.client.checkAndGetValue(
+            self.client.approveChannelAndIssueChannelToken(channelId),
+            "channelAccessToken",
+            5,
+        )
 
     def renew_tokens(self):
         self.__t_timeline = None

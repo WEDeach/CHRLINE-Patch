@@ -18,7 +18,10 @@ class Album(BaseBIZApi):
 
     @property
     def headers(self):
-        return self.client.biz.headers_with_timeline
+        return self.client.server.additionalHeaders(
+            self.client.biz.headers_with_timeline,
+            {"X-Line-ChannelToken": self.client.biz.token_with_album},
+        )
 
     def ext_headers(self, *, chatId: Optional[str] = None):
         hr = {}
@@ -226,7 +229,7 @@ class Album(BaseBIZApi):
         data = {"photos": photos}
         hr = self.ext_headers(chatId=chatId)
         r = self.request(
-            "POST", self.url(f"{albumId}/photos/create"), headers=hr, json=data
+            "POST", self.url(f"/{albumId}/photos/create"), headers=hr, json=data
         )
         return r.json()
 

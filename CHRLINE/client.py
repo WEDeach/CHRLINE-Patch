@@ -43,6 +43,8 @@ class CHRLINE(
         os_model: Optional[str] = None,
         rootLogLevel: int = 20,
         logFilterNs: List[str] = [],
+        *,
+        genThriftPath: Optional[str] = None
     ):
         r"""
         Line client for CHRLINE.
@@ -111,6 +113,8 @@ class CHRLINE(
         self.use_thrift = useThrift
         self.force_tmore = forceTMCP
         self.LINE_SERVICE_REGION = ""
+        self.path_gen_thrift = genThriftPath
+        self.readGenThrifts()
         if region is not None:
             self.LINE_SERVICE_REGION = region
 

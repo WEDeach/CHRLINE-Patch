@@ -1,11 +1,14 @@
 import base64
 import binascii
+import glob
 import json
 import os
 import struct
+import sys
 import time
 from base64 import b64encode
 from hashlib import md5
+from importlib.util import module_from_spec, spec_from_file_location
 from typing import Any, Optional, Union
 from urllib.parse import quote
 
@@ -28,7 +31,6 @@ from .serializers.DummyProtocol import (
     DummyProtocolSerializer,
     DummyThrift,
 )
-from .services.thrift import *
 from .services.thrift.ap.TCompactProtocol import TCompactProtocol as tcProtocol
 from .services.thrift.ttypes import TalkException
 from .utils.patchs import p_patch_all
@@ -849,6 +851,35 @@ class Models(ChrHelperProtocol):
                 "pubKey": e2eeKey[1],
                 "e2eeVersion": e2eeVersion,
             }
+
+    def readGenThrifts(self):
+        path = os.path.join(os.path.dirname(__file__), "services", "thrift", "*.py")
+        if self.client.path_gen_thrift is not None:
+            path = os.path.join(self.client.path_gen_thrift, "*.py")
+            self.__logger.info(f"Read GenThrifts from {self.client.path_gen_thrift}...")
+
+        module_files = glob.glob(path)
+
+        # https://github.com/DeachSword/MakiyuiSoul/blob/187186f910939bdfe4a38cd5b82a07ab4f30971c/__init__.py
+        for filepath in module_files:
+            filename = os.path.basename(filepath)
+            if filename == "__init__.py":
+                continue
+            module_name = filename[:-3]
+
+            spec = spec_from_file_location(
+                module_name,
+                filepath,
+                submodule_search_locations=[os.path.dirname(filepath)],
+            )
+            if spec:
+                module = module_from_spec(spec)
+                sys.modules[module_name] = module
+                globals()[module_name] = module
+                if spec.loader:
+                    spec.loader.exec_module(module)
+            else:
+                raise RuntimeError(f"Can't import {module_name}")
 
     def tryReadThriftContainerStruct(self, data, id=0, get_data_len=False):
         _data = {}

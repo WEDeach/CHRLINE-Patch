@@ -21,6 +21,7 @@ from Crypto.Cipher import AES
 from Crypto.PublicKey import RSA
 from Crypto.Util.Padding import pad, unpad
 
+from thrift.protocol.TCompactProtocol import TCompactProtocol as tcProtocol
 from thrift.transport.TTransport import TMemoryBuffer
 
 from .exceptions import E2EESelfKeyNotFoundException, LineServiceException
@@ -31,7 +32,6 @@ from .serializers.DummyProtocol import (
     DummyProtocolSerializer,
     DummyThrift,
 )
-from .services.thrift.ap.TCompactProtocol import TCompactProtocol as tcProtocol
 from .services.thrift.ttypes import TalkException
 from .utils.patchs import p_patch_all
 

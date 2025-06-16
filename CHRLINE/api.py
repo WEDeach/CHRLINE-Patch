@@ -30,6 +30,9 @@ from .services.PrimaryAccountInitService import PrimaryAccountInitService
 from .services.PrimaryAccountSmartSwitchRestorePreparationService import (
     PrimaryAccountSmartSwitchRestorePreparationService,
 )
+from .services.PrimaryAccountSmartSwitchRestoreService import (
+    PrimaryAccountSmartSwitchRestoreService,
+)
 from .services.PrimaryQrCodeMigrationLongPollingService import (
     PrimaryQrCodeMigrationLongPollingService,
 )
@@ -138,6 +141,7 @@ class API(
         ShopCollectionService.__init__(self)
         PremiumFontService.__init__(self)
         self.s_smart_switch = PrimaryAccountSmartSwitchRestorePreparationService(self)
+        self.s_smart_switch_sec = PrimaryAccountSmartSwitchRestoreService(self)
         self.s_multi_profile = MultiProfileService(self.client)
         self.s_premium_status = PremiumStatusService(self.client)
         self.s_seamless = PrimarySeamlessLoginService(self.client)

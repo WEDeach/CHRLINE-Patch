@@ -322,7 +322,8 @@ class Models(ChrHelperProtocol):
             _data = param[2]
             if _data is None:
                 continue
-            if isinstance(_data, DummyThrift):
+            if _type == 12 and isinstance(_data, DummyThrift):
+                # only for structs
                 _data = _data.dd_slist()
             if _type == 13:
                 if _data[2] is None:
@@ -856,7 +857,7 @@ class Models(ChrHelperProtocol):
         path = os.path.join(os.path.dirname(__file__), "services", "thrift", "*.py")
         if self.client.path_gen_thrift is not None:
             path = os.path.join(self.client.path_gen_thrift, "*.py")
-            self.__logger.info(f"Read GenThrifts from {self.client.path_gen_thrift}...")
+            self.__logger.info(f"Read GenThrifts from '{self.client.path_gen_thrift}'...")
 
         module_files = glob.glob(path)
 

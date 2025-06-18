@@ -1,4 +1,6 @@
-import re, setuptools
+import re
+
+import setuptools
 
 with open('CHRLINE/__init__.py') as f:
     version = re.search(r'__version__\s*=\s*\"(.+?)\"', f.read()).group(1)
@@ -16,7 +18,7 @@ setuptools.setup(
   url="https://github.com/DeachSword/CHRLINE",
   packages=setuptools.find_packages(),
   classifiers=[
-    "Programming Language :: Python :: 3.6"
+    "Programming Language :: Python :: 3.8"
   ],
   install_requires=[
     'pycryptodome==3.9.8', # ez:D

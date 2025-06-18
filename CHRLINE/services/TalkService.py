@@ -1,47 +1,78 @@
 ﻿# -*- coding: utf-8 -*-
-import httpx
-from typing import List
 from random import randint
-from .BaseService import BaseService, BaseServiceHandler, BaseServiceStruct
+from typing import TYPE_CHECKING, Any, ByteString, List, Optional, Union
+
+import httpx
+
+from ..helper import ChrHelperProtocol
+from ..helpers.bulders.message import Message as WrappedMessage
+from ..serializers.DummyProtocol import DummyThrift
+from .BaseService import (
+    BaseServiceHandler,
+    BaseServiceSender,
+    BaseServiceStruct,
+)
 
 try:
     from ..exceptions import LineServiceException
     from .thrift.ttypes import TalkException
-except:
+except Exception as _:
     pass
 
+if TYPE_CHECKING:
+    from ..client import CHRLINE
 
-class TalkService(BaseService):
-    url = "https://ga2.line.naver.jp/enc"
-    TalkService_REQ_TYPE = 4
-    TalkService_RES_TYPE = 4
-    TalkService_API_PATH = "/S4"
+
+class TalkService(ChrHelperProtocol):
+    __REQ_TYPE = 4
+    __RES_TYPE = 4
+    __ENDPOINT = "/S4"
 
     def __init__(self):
+
         self.sync_conn = httpx.Client(http2=True)
-        self.talk_handler = TalkServiceHandler(self)
+        self.talk_handler = TalkServiceHandler(self.client)
+
+        self._logger = self.client.get_logger("SERVICE").overload("TALK")
+        self.__sender = BaseServiceSender(
+            self.client,
+            "TalkService",
+            self.__REQ_TYPE,
+            self.__RES_TYPE,
+            self.__ENDPOINT,
+        )
+        self._logger.info("INIT!")
 
     def sendMessage(
         self,
         to: str,
-        text: str,
+        text: Optional[str],
         contentType: int = 0,
-        contentMetadata: dict = None,
-        relatedMessageId: str = None,
-        location: dict = None,
-        chunk: list = None,
+        contentMetadata: Optional[dict] = None,
+        relatedMessageId: Optional[str] = None,
+        location: Optional[dict] = None,
+        chunk: Optional[list] = None,
+        squareChatMid: Optional[str] = None,
+        autoE2EE: bool = True,
     ):
         if contentMetadata is None:
             contentMetadata = {}
 
         METHOD_NAME = "sendMessage"
         SERVICE_NAME = "TalkService"
-        RES_TYPE = 3
-        ENDPOINT = self.LINE_NORMAL_ENDPOINT
+        RES_TYPE = self.__RES_TYPE
+        ENDPOINT = self.__ENDPOINT
         relatedMessageServiceCode = 1
+        TO_TYPE = self.client.getToType(to)
 
-        if self.getToType(to) == 4:
+        if TO_TYPE == 4:
             SERVICE_NAME = "SquareService"
+            RES_TYPE = 4
+            ENDPOINT = "/SQ1"
+            relatedMessageServiceCode = 2
+        elif TO_TYPE == 7:
+            SERVICE_NAME = "SquareService"
+            METHOD_NAME = "sendSquareThreadMessage"
             RES_TYPE = 4
             ENDPOINT = "/SQ1"
             relatedMessageServiceCode = 2
@@ -76,61 +107,96 @@ class TalkService(BaseService):
                 [8, 22, 3]
             )
             message.append([8, 24, relatedMessageServiceCode])
-        params = [[8, 1, self.getCurrReqId()], [12, 2, message]]
-        if self.getToType(to) == 4:
+        params = [
+            [8, 1, self.client.getCurrReqId()],
+            [12, 2, message],
+        ]
+        if TO_TYPE == 4:
             params = [
-                [
-                    12,
-                    1,
-                    [
-                        [8, 1, self.getCurrReqId()],
-                        [11, 2, to],
-                        [12, 3, [[12, 1, message]]],
-                    ],
-                ]
+                [8, 1, self.client.getCurrReqId("sq")],
+                [11, 2, to],
+                [12, 3, [[12, 1, message]]],
             ]
+            params = [[12, 1, params]]
+        elif TO_TYPE == 7:
+            assert squareChatMid
+            threadMessage = [
+                [12, 1, message],
+                [8, 3, 5],
+            ]
+            params = [
+                [8, 1, self.client.getCurrReqId("sq")],
+                [11, 2, squareChatMid],
+                [11, 3, to],
+                [12, 4, threadMessage],
+            ]
+            params = [[12, 1, params]]
         else:
-            params = [[8, 1, self.getCurrReqId()], [12, 2, message]]
-        sqrd = self.generateDummyProtocol(METHOD_NAME, params, 4)
+            params = [
+                [8, 1, self.client.getCurrReqId()],
+                [12, 2, message],
+            ]
         try:
-            return self.postPackDataAndGetUnpackRespData(
-                ENDPOINT, sqrd, RES_TYPE, readWith=f"{SERVICE_NAME}.{METHOD_NAME}"
+            return self.__sender.send(
+                METHOD_NAME,
+                params,
+                **{
+                    "path": ENDPOINT,
+                    "ttype": RES_TYPE,
+                    "readWith": f"{SERVICE_NAME}.{METHOD_NAME}",
+                },
             )
         except (LineServiceException, TalkException) as e:
-            if e.code in [82, 99]:
-                return self.sendMessageWithE2EE(
-                    to, text, contentType, contentMetadata, relatedMessageId
-                )
+            if getattr(e, "code") in [82, 99]:
+                if autoE2EE:
+                    self._logger.warn("auto encrypt msg for E2EE...")
+                    return self.sendMessageWithE2EE(
+                        to, text, contentType, contentMetadata, relatedMessageId
+                    )
             raise e
         except Exception as e:
             raise e
 
     def replyMessage(
         self,
-        msgData: any,
-        text: str,
+        msgData: Union[dict, WrappedMessage],
+        text: Any,
         contentType: int = 0,
-        contentMetadata: dict = None,
-        location: dict = None,
-        relatedMessageId: str = None,
+        contentMetadata: Optional[dict] = None,
+        location: Optional[dict] = None,
+        relatedMessageId: Optional[str] = None,
+        squareChatMid: Optional[str] = None,
     ):
-        to = self.checkAndGetValue(msgData, "to", 2)
-        toType = self.checkAndGetValue(msgData, "toType", 3)
+        to = self.client.checkAndGetValue(msgData, "to", 2)
+        toType = self.client.checkAndGetValue(msgData, "toType", 3)
         if contentMetadata is None:
             contentMetadata = {}
         if relatedMessageId is None:
-            relatedMessageId = self.checkAndGetValue(msgData, "id", 4)
-        opType = self.checkAndGetValue(msgData, "opType")
+            relatedMessageId = self.client.checkAndGetValue(msgData, "id", 4)
+        opType = self.client.checkAndGetValue(msgData, "opType")
         if toType == 0 and opType in [26, None]:  # opType for hooks
-            to = self.checkAndGetValue(msgData, "_from", 1)
-        if self.checkAndGetValue(msgData, "isE2EE") is True:
+            to = self.client.checkAndGetValue(msgData, "_from", 1)
+            if isinstance(msgData, WrappedMessage):
+                to = msgData.sender.mid
+        elif toType == 7:
+            if squareChatMid is None:
+                squareChatMid = self.client.checkAndGetValue(msgData, "squareChatMid")
+            assert squareChatMid
+        if to is None:
+            raise ValueError("`to` is required.")
+        if self.client.checkAndGetValue(msgData, "isE2EE") is True:
             if contentType == 15:
                 text = location  # difference
             return self.sendMessageWithE2EE(
                 to, text, contentType, contentMetadata, relatedMessageId
             )
         return self.sendMessage(
-            to, text, contentType, contentMetadata, relatedMessageId
+            to,
+            text,
+            contentType,
+            contentMetadata,
+            relatedMessageId,
+            squareChatMid=squareChatMid,
         )
 
     def sendContact(self, to, mid, displayName=None):
@@ -163,18 +229,43 @@ class TalkService(BaseService):
         )
 
     def sendMessageWithE2EE(
-        self, to, text, contentType=0, contentMetadata=None, relatedMessageId=None
+        self,
+        to,
+        text,
+        contentType=0,
+        contentMetadata=None,
+        relatedMessageId=None,
+        renewKey=False,
     ):
         if contentMetadata is None:
             contentMetadata = {}
-        chunk = self.encryptE2EEMessage(to, text, contentType=contentType)
-        contentMetadata = self.server.additionalHeaders(
-            contentMetadata,
-            {"e2eeVersion": "2", "contentType": str(contentType), "e2eeMark": "2"},
+        chunk = self.client.encryptE2EEMessage(
+            to, text, contentType=contentType, renewKey=renewKey
         )
-        return self.sendMessageWithChunks(
-            to, chunk, contentType, contentMetadata, relatedMessageId
+        contentMetadata.update(
+            {
+                "e2eeVersion": "2",
+                "contentType": str(contentType),
+                "e2eeMark": "2",
+            }
         )
+        try:
+            return self.sendMessageWithChunks(
+                to, chunk, contentType, contentMetadata, relatedMessageId
+            )
+        except (LineServiceException, TalkException) as e:
+            e_code = getattr(e, "code")
+            if e_code == 84 and not renewKey:
+                self._logger.warn(f"renew E2EE key for '{to}'...")
+                return self.sendMessageWithE2EE(
+                    to,
+                    text,
+                    contentType,
+                    contentMetadata,
+                    relatedMessageId,
+                    renewKey=True,
+                )
+            raise e
 
     def sendMessageWithChunks(
         self, to, chunk, contentType=0, contentMetadata=None, relatedMessageId=None
@@ -182,54 +273,60 @@ class TalkService(BaseService):
         if contentMetadata is None:
             contentMetadata = {}
         return self.sendMessage(
-            to, None, contentType, contentMetadata, relatedMessageId, chunk=chunk
+            to,
+            None,
+            contentType,
+            contentMetadata,
+            relatedMessageId,
+            chunk=chunk,
+            autoE2EE=False,
         )
 
-    def sendCompactMessage(self, to: str, text: str, chunks: list = None):
+    def sendCompactMessage(
+        self, to: str, text: Optional[str], chunks: Optional[list] = None
+    ):
         cType = -1  # 2 = TEXT, 4 = STICKER, 5 = E2EE_TEXT, 6 = E2EE_LOCATION
-        ep = self.LINE_COMPACT_PLAIN_MESSAGE_ENDPOINT
+        ep = self.client.LINE_COMPACT_PLAIN_MESSAGE_ENDPOINT
         if chunks is None:
             chunks = []
         if text is not None:
             cType = 2
         elif chunks:
             cType = 5
-            ep = self.LINE_COMPACT_E2EE_MESSAGE_ENDPOINT
-        sqrd = [cType]
-        midType = to[0]
-        if midType == "u":
-            sqrd.append(0)
-        elif midType == "r":
-            sqrd.append(1)
-        elif midType == "c":
-            sqrd.append(2)
-        else:
-            raise Exception(f"unknown midType: {midType}")
-        _reqId = self.getCurrReqId()
-        self.log(f"[sendCompactMessage] REQ_ID: {_reqId}", True)
-        sqrd += self.getIntBytes(_reqId, isCompact=True)
-        sqrd += self.getMagicStringBytes(to[1:])
+            ep = self.client.LINE_COMPACT_E2EE_MESSAGE_ENDPOINT
+        midType = self.client.getToType(to)
+        sqrd = [cType, midType]
+        _reqId = self.client.getCurrReqId()
+        self._logger.debug(
+            f"[sendCompactMessage] REQ_ID: {_reqId}",
+        )
+        sqrd += self.client.getIntBytes(_reqId, isCompact=True)
+        sqrd += self.client.getMagicStringBytes(to[1:])
         if cType == 2:
-            sqrd += self.getStringBytes(text, isCompact=True)
+            sqrd += self.client.getStringBytes(text, isCompact=True)
             sqrd.append(2)
         elif cType == 5:
             sqrd += [2]
             for _ck in chunks[:3]:
-                sqrd += self.getStringBytes(_ck, isCompact=True)
+                sqrd += self.client.getStringBytes(_ck, isCompact=True)
             for _ck in chunks[3:5]:
                 sqrd += list(_ck)
-        hr = self.server.additionalHeaders(self.server.Headers, {"x-lai": str(_reqId)})
+        hr = self.client.server.additionalHeaders(
+            self.client.server.Headers, {"x-lai": str(_reqId)}
+        )
         try:
-            return self.postPackDataAndGetUnpackRespData(ep, sqrd, -7, headers=hr)
+            return self.client.postPackDataAndGetUnpackRespData(
+                ep, sqrd, -7, headers=hr
+            )
         except (LineServiceException, TalkException) as e:
-            if e.code in [82, 99]:
+            if getattr(e, "code") in [82, 99]:
                 return self.sendCompactE2EEMessage(to, text)
             raise e
         except Exception as e:
             raise e
 
     def sendCompactE2EEMessage(self, to, text):
-        chunks = self.encryptE2EEMessage(to, text, isCompact=True)
+        chunks = self.client.encryptE2EEMessage(to, text, isCompact=True)
         return self.sendCompactMessage(to, None, chunks)
 
     def sendSuperEzTagAll(self, to: str, text: str, **kwargs):
@@ -249,871 +346,295 @@ class TalkService(BaseService):
         S = r.index("@")
         T = r[S:].index(" ")
         L = S + (T if T != -1 else 1)
-        m = self.genMentionData([{"S": S, "L": L, "A": True}])
+        m = self.client.genMentionData([{"S": S, "L": L, "A": True}])
         k["contentMetadata"].update(m)
         k["to"] = to
         k["text"] = r
         return self.sendMessage(**k)
 
     def getEncryptedIdentity(self):
+        """
+        Get encrypted identity.
+
+        DEPRECATED: Use 'getEncryptedIdentityV3' instead.
+        """
         METHOD_NAME = "getEncryptedIdentity"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            20,
-            103,
-            101,
-            116,
-            69,
-            110,
-            99,
-            114,
-            121,
-            112,
-            116,
-            101,
-            100,
-            73,
-            100,
-            101,
-            110,
-            116,
-            105,
-            116,
-            121,
-            0,
-            0,
-            0,
-            0,
-            0,
-        ]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
-
-    def getProfile(self):
-        METHOD_NAME = "getProfile"
         params = []
-        sqrd = self.generateDummyProtocol(METHOD_NAME, params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getSettings(self):
+    def getProfile(self, syncReason: int = 2):
+        METHOD_NAME = "getProfile"
+        params = [
+            [8, 1, syncReason],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
+
+    def getSettings(self, syncReason: int = 2):
         METHOD_NAME = "getSettings"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            11,
-            103,
-            101,
-            116,
-            83,
-            101,
-            116,
-            116,
-            105,
-            110,
-            103,
-            115,
-            0,
-            0,
-            0,
-            0,
-            0,
+        params = [
+            [8, 1, syncReason],
         ]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def sendChatChecked(self, chatMid, lastMessageId):
+    def sendChatChecked(
+        self, chatMid: str, lastMessageId: str, sessionId: Optional[int] = None
+    ):
         METHOD_NAME = "sendChatChecked"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            15,
-            115,
-            101,
-            110,
-            100,
-            67,
-            104,
-            97,
-            116,
-            67,
-            104,
-            101,
-            99,
-            107,
-            101,
-            100,
-            0,
-            0,
-            0,
-            0,
+        params = [
+            [8, 1, self.client.getCurrReqId()],
+            [11, 2, chatMid],
+            [11, 3, lastMessageId],
+            [3, 4, sessionId],
         ]
-        sqrd += [8, 0, 1, 0, 0, 0, 0]
-        sqrd += [11, 0, 2, 0, 0, 0, 33]
-        for value in chatMid:
-            sqrd.append(ord(value))
-        sqrd += [11, 0, 3, 0, 0, 0, len(lastMessageId)]
-        for value in lastMessageId:
-            sqrd.append(ord(value))
-        # [3, 0, 4] # sessionId
-        sqrd += [0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def unsendMessage(self, messageId):
+    def unsendMessage(self, messageId: str):
         METHOD_NAME = "unsendMessage"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            13,
-            117,
-            110,
-            115,
-            101,
-            110,
-            100,
-            77,
-            101,
-            115,
-            115,
-            97,
-            103,
-            101,
-            0,
-            0,
-            0,
-            0,
+        params = [
+            [8, 1, self.client.getCurrReqId()],
+            [11, 2, messageId],
         ]
-        sqrd += [8, 0, 1, 0, 0, 0, 0]
-        sqrd += [11, 0, 2, 0, 0, 0, len(messageId)]
-        for value in messageId:
-            sqrd.append(ord(value))
-        sqrd += [0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getContact(self, mid: str):
+        """
+        Get contact.
+        """
         METHOD_NAME = "getContact"
         params = [[11, 2, mid]]
-        sqrd = self.generateDummyProtocol(METHOD_NAME, params, 3)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getContacts(self, mids):
+    def getContacts(self, mids: List[str]):
+        """
+        Get contacts.
+
+        DEPRECATED: Use 'getContactsV3' instead.
+        """
         METHOD_NAME = "getContacts"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            11,
-            103,
-            101,
-            116,
-            67,
-            111,
-            110,
-            116,
-            97,
-            99,
-            116,
-            115,
-            0,
-            0,
-            0,
-            0,
-            15,
-            0,
-            2,
-            11,
-            0,
-            0,
-            0,
-            len(mids),
-        ]
-        for mid in mids:
-            sqrd += [0, 0, 0, 33]
-            for value in mid:
-                sqrd.append(ord(value))
-        sqrd += [0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [[15, 2, [11, mids]]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def getContactsV2(self, mids):
-        """Get contacts v2.
+        """
+        Get contacts V2.
 
-        used to get information about multiple contacts.
-        this may be called during after sync operation.
+        DEPRECATED: Use 'getContactsV3' instead.
         """
         METHOD_NAME = "getContactsV2"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            13,
-            103,
-            101,
-            116,
-            67,
-            111,
-            110,
-            116,
-            97,
-            99,
-            116,
-            115,
-            86,
-            50,
-            0,
-            0,
-            0,
-            0,
-        ]
-        sqrd += [12, 0, 1]
-        sqrd += [15, 0, 1, 11, 0, 0, 0, len(mids)]
-        for mid in mids:
-            sqrd += [0, 0, 0, 33]
-            for value in mid:
-                sqrd.append(ord(value))
-        sqrd += [0, 0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [[15, 1, [11, mids]]]
+        params = [[12, 1, params]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def findAndAddContactsByMid(
         self, mid, reference='{"screen":"groupMemberList","spec":"native"}'
     ):
+        """
+        Find and add contacts by mid.
+
+        DEPRECATED: Use 'addFriendByMid' instead.
+        """
         METHOD_NAME = "findAndAddContactsByMid"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            23,
-            102,
-            105,
-            110,
-            100,
-            65,
-            110,
-            100,
-            65,
-            100,
-            100,
-            67,
-            111,
-            110,
-            116,
-            97,
-            99,
-            116,
-            115,
-            66,
-            121,
-            77,
-            105,
-            100,
-            0,
-            0,
-            0,
-            0,
+        params = [
+            [8, 1, self.client.getCurrReqId()],
+            [11, 2, mid],
+            [8, 3, 0],
+            [11, 4, reference],
         ]
-        sqrd += [8, 0, 1, 0, 0, 0, 0]
-        sqrd += [11, 0, 2, 0, 0, 0, 33]
-        for value in mid:
-            sqrd.append(ord(value))
-        sqrd += [8, 0, 3, 0, 0, 0, 0]
-        sqrd += [11, 0, 4] + self.getStringBytes(reference)
-        sqrd += [0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getGroup(self, mid):
-        raise NotImplementedError("getGroup is too old, please use getChats")
+    def getGroup(self, mid: str):
+        """
+        Get group.
+
+        DEPRECATED: Use 'getChats' instead.
+        """
         METHOD_NAME = "getGroup"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            8,
-            103,
-            101,
-            116,
-            71,
-            114,
-            111,
-            117,
-            112,
-            0,
-            0,
-            0,
-            0,
-            11,
-            0,
-            2,
-            0,
-            0,
-            0,
-            33,
+        params = [
+            [11, 2, mid],
         ]
-        for value in mid:
-            sqrd.append(ord(value))
-        sqrd += [0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getGroups(self, mids):
-        raise NotImplementedError("getGroups is too old, please use getChats")
+    def getGroups(self, mids: List[str]):
+        """
+        Get groups.
+
+        DEPRECATED: Use 'getChats' instead.
+        """
         METHOD_NAME = "getGroups"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            9,
-            103,
-            101,
-            116,
-            71,
-            114,
-            111,
-            117,
-            112,
-            115,
-            0,
-            0,
-            0,
-            0,
-            15,
-            0,
-            2,
-            11,
-            0,
-            0,
-            0,
-            len(mids),
+        params = [
+            [15, 2, [11, mids]],
         ]
-        for mid in mids:
-            sqrd += [0, 0, 0, 33]
-            for value in mid:
-                sqrd.append(ord(value))
-        sqrd += [0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getGroupsV2(self, mids):
-        raise NotImplementedError("getGroupsV2 is too old, please use getChats")
+    def getGroupsV2(self, mids: List[str]):
+        """
+        Get groups v2.
+
+        DEPRECATED: Use 'getChats' instead.
+        """
         METHOD_NAME = "getGroupsV2"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            11,
-            103,
-            101,
-            116,
-            71,
-            114,
-            111,
-            117,
-            112,
-            115,
-            86,
-            50,
-            0,
-            0,
-            0,
-            0,
-            15,
-            0,
-            2,
-            11,
-            0,
-            0,
-            0,
-            len(mids),
+        params = [
+            [15, 2, [11, mids]],
         ]
-        for mid in mids:
-            sqrd += [0, 0, 0, 33]
-            for value in mid:
-                sqrd.append(ord(value))
-        sqrd += [0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getChats(self, mids, withMembers=True, withInvitees=True):
+    def getChats(
+        self,
+        mids: List[str],
+        withMembers: bool = True,
+        withInvitees: bool = True,
+        syncReason: int = 1,
+    ):
+        """Get chats."""
         METHOD_NAME = "getChats"
-        if type(mids) != list:
+        if not isinstance(mids, list):
             raise Exception("[getChats] mids must be a list")
         params = [
-            [12, 1, [[15, 1, [11, mids]], [2, 2, withMembers], [2, 3, withInvitees]]]
+            [12, 1, [[15, 1, [11, mids]], [2, 2, withMembers], [2, 3, withInvitees]]],
+            [8, 2, syncReason],
         ]
-        sqrd = self.generateDummyProtocol(METHOD_NAME, params, 3)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getAllChatMids(self, withMembers=True, withInvitees=True):
+    def getAllChatMids(
+        self, withMembers: bool = True, withInvitees: bool = True, syncReason: int = 2
+    ):
+        """Get all chat mids."""
         METHOD_NAME = "getAllChatMids"
-        params = [[12, 1, [[2, 1, withMembers], [2, 2, withInvitees]]], [8, 2, 7]]
-        sqrd = self.generateDummyProtocol(METHOD_NAME, params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
-
-    def getCompactGroup(self, mid):
-        METHOD_NAME = "getCompactGroup"
-        raise NotImplementedError("getCompactGroup is too old, please use getChats")
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            15,
-            103,
-            101,
-            116,
-            67,
-            111,
-            109,
-            112,
-            97,
-            99,
-            116,
-            71,
-            114,
-            111,
-            117,
-            112,
-            0,
-            0,
-            0,
-            0,
-            11,
-            0,
-            2,
-            0,
-            0,
-            0,
-            33,
+        params = [
+            [12, 1, [[2, 1, withMembers], [2, 2, withInvitees]]],
+            [8, 2, syncReason],
         ]
-        for value in mid:
-            sqrd.append(ord(value))
-        sqrd += [0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def deleteOtherFromChat(self, to, mid):
+    def getCompactGroup(self, mid: str):
+        """
+        Get compact group.
+
+        DEPRECATED: Use 'getChats' instead.
+        """
+        METHOD_NAME = "getCompactGroup"
+        params = [
+            [11, 2, mid],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
+
+    def deleteOtherFromChat(self, to: str, mid: str):
+        """Delete other from chat."""
         METHOD_NAME = "deleteOtherFromChat"
-        if type(mid) == list:
+        if isinstance(mid, list):
             _lastReq = None
             for _mid in mid:
-                print(f"[deleteOtherFromChat] The parameter 'mid' should be str")
+                print("[deleteOtherFromChat] The parameter 'mid' should be str")
                 _lastReq = self.deleteOtherFromChat(to, _mid)
             return _lastReq
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            19,
-            100,
-            101,
-            108,
-            101,
-            116,
-            101,
-            79,
-            116,
-            104,
-            101,
-            114,
-            70,
-            114,
-            111,
-            109,
-            67,
-            104,
-            97,
-            116,
-            0,
-            0,
-            0,
-            0,
+        params = [
+            [8, 1, self.client.getCurrReqId()],
+            [11, 2, to],
+            [14, 3, [11, [mid]]],
         ]
-        sqrd += [12, 0, 1]
-        sqrd += [8, 0, 1, 0, 0, 0, 0]  # seq?
-        sqrd += [11, 0, 2, 0, 0, 0, len(to)]
-        for value in to:
-            sqrd.append(ord(value))
-        sqrd += [14, 0, 3, 11, 0, 0, 0, 1, 0, 0, 0, len(mid)]
-        for value in mid:
-            sqrd.append(ord(value))
-        sqrd += [0, 0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [
+            [12, 1, params],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def inviteIntoChat(self, to, mids):
+    def inviteIntoChat(self, to: str, mids: List[str]):
+        """Invite into chat."""
         METHOD_NAME = "inviteIntoChat"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            14,
-            105,
-            110,
-            118,
-            105,
-            116,
-            101,
-            73,
-            110,
-            116,
-            111,
-            67,
-            104,
-            97,
-            116,
-            0,
-            0,
-            0,
-            0,
+        params = [
+            [8, 1, self.client.getCurrReqId()],
+            [11, 2, to],
+            [14, 3, [11, mids]],
         ]
-        sqrd += [12, 0, 1]
-        sqrd += [8, 0, 1, 0, 0, 0, 0]
-        sqrd += [11, 0, 2, 0, 0, 0, len(to)]
-        for value in to:
-            sqrd.append(ord(value))
-        sqrd += [14, 0, 3, 11, 0, 0, 0, len(mids)]
-        for mid in mids:
-            sqrd += [0, 0, 0, 33]
-            for value in mid:
-                sqrd.append(ord(value))
-        sqrd += [0, 0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [
+            [12, 1, params],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def cancelChatInvitation(self, to, mid):
+    def cancelChatInvitation(self, to: str, mid: str):
+        """Cancel chat invitation."""
         METHOD_NAME = "cancelChatInvitation"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            20,
-            99,
-            97,
-            110,
-            99,
-            101,
-            108,
-            67,
-            104,
-            97,
-            116,
-            73,
-            110,
-            118,
-            105,
-            116,
-            97,
-            116,
-            105,
-            111,
-            110,
-            0,
-            0,
-            0,
-            0,
+        if isinstance(mid, list):
+            _lastReq = None
+            for _mid in mid:
+                print("[deleteOtherFromChat] The parameter 'mid' should be str")
+                _lastReq = self.deleteOtherFromChat(to, _mid)
+            return _lastReq
+        params = [
+            [8, 1, self.client.getCurrReqId()],
+            [11, 2, to],
+            [14, 3, [11, [mid]]],
         ]
-        sqrd += [12, 0, 1]
-        sqrd += [8, 0, 1, 0, 0, 0, 0]  # seq?
-        sqrd += [11, 0, 2, 0, 0, 0, len(to)]
-        for value in to:
-            sqrd.append(ord(value))
-        sqrd += [14, 0, 3, 11, 0, 0, 0, 1, 0, 0, 0, len(mid)]
-        for value in mid:
-            sqrd.append(ord(value))
-        sqrd += [0, 0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [
+            [12, 1, params],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def deleteSelfFromChat(self, to):
+    def deleteSelfFromChat(self, to: str):
+        """Delete self from chat."""
         METHOD_NAME = "deleteSelfFromChat"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            18,
-            100,
-            101,
-            108,
-            101,
-            116,
-            101,
-            83,
-            101,
-            108,
-            102,
-            70,
-            114,
-            111,
-            109,
-            67,
-            104,
-            97,
-            116,
-            0,
-            0,
-            0,
-            0,
+        params = [
+            [8, 1, self.client.getCurrReqId()],
+            [11, 2, to],
         ]
-        sqrd += [12, 0, 1]
-        sqrd += [8, 0, 1, 0, 0, 0, 0]
-        sqrd += [11, 0, 2, 0, 0, 0, len(to)]
-        for value in to:
-            sqrd.append(ord(value))
-        # sqrd += [10, 0, 3] # lastSeenMessageDeliveredTime
-        # sqrd += [11, 0, 4] # lastSeenMessageId
-        # sqrd += [10, 0, 5] # lastMessageDeliveredTime
-        # sqrd += [11, 0, 6] # lastMessageId
-        sqrd += [0, 0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [
+            [12, 1, params],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def acceptChatInvitation(self, to):
+    def acceptChatInvitation(self, to: str):
+        """Accept chat invitation."""
         METHOD_NAME = "acceptChatInvitation"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            20,
-            97,
-            99,
-            99,
-            101,
-            112,
-            116,
-            67,
-            104,
-            97,
-            116,
-            73,
-            110,
-            118,
-            105,
-            116,
-            97,
-            116,
-            105,
-            111,
-            110,
-            0,
-            0,
-            0,
-            0,
+        params = [
+            [8, 1, self.client.getCurrReqId()],
+            [11, 2, to],
         ]
-        sqrd += [12, 0, 1]
-        sqrd += [8, 0, 1] + self.getIntBytes(self.getCurrReqId())
-        sqrd += [11, 0, 2, 0, 0, 0, len(to)]
-        for value in to:
-            sqrd.append(ord(value))
-        sqrd += [0, 0]
-        _d = self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
-        return _d
+        params = [
+            [12, 1, params],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def reissueChatTicket(self, groupMid):
+    def reissueChatTicket(self, groupMid: str):
+        """Reissue chat ticket."""
         METHOD_NAME = "reissueChatTicket"
-        sqrd = [128, 1, 0, 1] + self.getStringBytes("reissueChatTicket") + [0, 0, 0, 0]
-        sqrd += [12, 0, 1]
-        sqrd += [8, 0, 1] + self.getIntBytes(0)  # reqSeq
-        sqrd += [11, 0, 2] + self.getStringBytes(groupMid)
-        sqrd += [0, 0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [
+            [8, 1, self.client.getCurrReqId()],
+            [11, 2, groupMid],
+        ]
+        params = [
+            [12, 1, params],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def findChatByTicket(self, ticketId):
+    def findChatByTicket(self, ticketId: str):
+        """Find chat by ticket."""
         METHOD_NAME = "findChatByTicket"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            16,
-            102,
-            105,
-            110,
-            100,
-            67,
-            104,
-            97,
-            116,
-            66,
-            121,
-            84,
-            105,
-            99,
-            107,
-            101,
-            116,
-            0,
-            0,
-            0,
-            0,
+        params = [
+            [11, 1, ticketId],
         ]
-        sqrd += [12, 0, 1]
-        sqrd += [11, 0, 1] + self.getStringBytes(ticketId)
-        sqrd += [0, 0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [
+            [12, 1, params],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def acceptChatInvitationByTicket(self, to, ticket):
+    def acceptChatInvitationByTicket(self, to: str, ticket: str):
+        """Accept chat invitation by ticket."""
         METHOD_NAME = "acceptChatInvitationByTicket"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            28,
-            97,
-            99,
-            99,
-            101,
-            112,
-            116,
-            67,
-            104,
-            97,
-            116,
-            73,
-            110,
-            118,
-            105,
-            116,
-            97,
-            116,
-            105,
-            111,
-            110,
-            66,
-            121,
-            84,
-            105,
-            99,
-            107,
-            101,
-            116,
-            0,
-            0,
-            0,
-            0,
+        params = [
+            [8, 1, self.client.getCurrReqId()],
+            [11, 2, to],
+            [11, 3, ticket],
         ]
-        sqrd += [12, 0, 1]
-        sqrd += [8, 0, 1, 0, 0, 0, 0]
-        sqrd += [11, 0, 2, 0, 0, 0, len(to)]
-        for value in to:
-            sqrd.append(ord(value))
-        sqrd += [11, 0, 3, 0, 0, 0, len(ticket)]
-        for value in ticket:
-            sqrd.append(ord(value))
-        sqrd += [0, 0]
-        _d = self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
-        return _d
+        params = [
+            [12, 1, params],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def updateChat(self, chatMid, chatSet, updatedAttribute=1):
-        METHOD_NAME = "updateChat"
+    def updateChat(
+        self, chatMid: str, chatSet: Union[dict, DummyThrift], updatedAttribute=1
+    ):
         """
+        Update chat.
+
         updatedAttribute:
             NAME(1),
             PICTURE_STATUS(2),
@@ -1122,337 +643,139 @@ class TalkService(BaseService):
             INVITATION_TICKET(16),
             FAVORITE_TIMESTAMP(32),
             CHAT_TYPE(64);
-        TODO:
-            using dict to update?
         """
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            10,
-            117,
-            112,
-            100,
-            97,
-            116,
-            101,
-            67,
-            104,
-            97,
-            116,
-            0,
-            0,
-            0,
-            0,
+        METHOD_NAME = "updateChat"
+        chat_type = {
+            1: 8,
+            3: 10,
+            4: 2,
+            5: 10,
+            6: 11,
+            7: 11,
+        }
+        extra_group_type = {
+            1: 11,
+            2: 2,
+            3: 11,
+            4: (13, (11, 10)),
+            5: (13, (11, 10)),
+            6: 2,
+            7: 2,
+            8: 2,
+        }
+        chat = [
+            [11, 2, chatMid],
         ]
-        sqrd += [12, 0, 1]
-        sqrd += [8, 0, 1, 0, 0, 0, 0]
-        sqrd += [12, 0, 2]
-        if chatSet.get(1) is not None:
-            sqrd += [8, 0, 1] + self.getIntBytes(chatSet[1])
+        if isinstance(chatSet, DummyThrift):
+            chat = chatSet
         else:
-            sqrd += [8, 0, 1, 0, 0, 0, 1]  # type
-        sqrd += [11, 0, 2] + self.getStringBytes(chatMid)
-        if chatSet.get(4) is not None:
-            sqrd += [2, 0, 4, int(chatSet[4])]
-        if chatSet.get(6) is not None:
-            sqrd += [11, 0, 6] + self.getStringBytes(chatSet[6])
-        if chatSet.get(8) is not None:
-            extra = chatSet[8]
-            sqrd += [12, 0, 8]
-            sqrd += [12, 0, 1]
-            if extra.get(2) is not None:
-                sqrd += [2, 0, 2, int(extra[2])]
-            if extra.get(6) is not None:
-                sqrd += [2, 0, 6, int(extra[6])]
-            if extra.get(7) is not None:
-                sqrd += [2, 0, 7, int(extra[7])]
-            sqrd += [0, 0]
-        sqrd += [0]
-        sqrd += [8, 0, 3] + self.getIntBytes(updatedAttribute)
-        sqrd += [0, 0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+            # if chatSet use dict only
+            for k, v in chat_type.items():
+                v2 = chatSet.get(k)
+                if v2 is not None:
+                    chat.append([v, k, v2])
+            extra = chatSet.get(8)
+            if extra is not None:
+                groupExtra = extra.get(1)
+                peerExtra = extra.get(2)
+                chat_extra = []
+                if groupExtra is not None:
+                    for k, v in extra_group_type.items():
+                        v2 = groupExtra.get(k)
+                        if v2 is not None:
+                            if isinstance(v, int):
+                                chat_extra.append([v, k, v2])
+                            else:
+                                v3, v4 = v
+                                v5 = [_v for _v in v4] + [v2]
+                                chat_extra.append([v3, k, v5])
+                    chat_extra = [[12, 1, chat_extra]]
+                else:
+                    raise NotImplementedError
+                chat.append([12, 8, chat_extra])
+        params = [
+            [8, 1, self.client.getCurrReqId()],
+            [12, 2, chat],
+            [8, 3, updatedAttribute],
+        ]
+        params = [
+            [12, 1, params],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def updateChatName(self, chatMid, name):
+    def updateChatName(self, chatMid: str, name: str):
+        """Update chat name."""
         return self.updateChat(chatMid, {6: name}, 1)
 
-    def updateChatPreventedUrl(self, chatMid, bool):
-        return self.updateChat(chatMid, {8: {2: bool}}, 4)
+    def updateChatPreventedUrl(self, chatMid: str, bT: bool):
+        """Update chat prevented url."""
+        return self.updateChat(chatMid, {8: {1: {2: bT}}}, 4)
 
     def getGroupIdsJoined(self):
-        raise NotImplementedError(
-            "getGroupIdsJoined is too old, please use getAllChatMids"
-        )
+        """
+        Get group ids joined.
+
+        DEPRECATED: Use 'getAllChatMids' instead.
+        """
         METHOD_NAME = "getGroupIdsJoined"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            17,
-            103,
-            101,
-            116,
-            71,
-            114,
-            111,
-            117,
-            112,
-            73,
-            100,
-            115,
-            74,
-            111,
-            105,
-            110,
-            101,
-            100,
-            0,
-            0,
-            0,
-            0,
-            0,
-        ]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = []
+        return self.__sender.send(METHOD_NAME, params)
 
     def getGroupIdsInvited(self):
-        raise NotImplementedError(
-            "getGroupIdsInvited is too old, please use getAllChatMids"
-        )
-        METHOD_NAME = "getGroupIdsInvited"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            18,
-            103,
-            101,
-            116,
-            71,
-            114,
-            111,
-            117,
-            112,
-            73,
-            100,
-            115,
-            73,
-            110,
-            118,
-            105,
-            116,
-            101,
-            100,
-            0,
-            0,
-            0,
-            0,
-            0,
-        ]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        """
+        Get group ids invited.
 
-    def getAllContactIds(self):
+        DEPRECATED: Use 'getAllChatMids' instead.
+        """
+        METHOD_NAME = "getGroupIdsInvited"
+        params = []
+        return self.__sender.send(METHOD_NAME, params)
+
+    def getAllContactIds(self, syncReason: int = 2):
+        """Get all contact ids."""
         METHOD_NAME = "getAllContactIds"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            16,
-            103,
-            101,
-            116,
-            65,
-            108,
-            108,
-            67,
-            111,
-            110,
-            116,
-            97,
-            99,
-            116,
-            73,
-            100,
-            115,
-            0,
-            0,
-            0,
-            0,
-            0,
+        params = [
+            [8, 1, syncReason],
         ]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getBlockedContactIds(self):
+        """Get blocked contact ids."""
         METHOD_NAME = "getBlockedContactIds"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            20,
-            103,
-            101,
-            116,
-            66,
-            108,
-            111,
-            99,
-            107,
-            101,
-            100,
-            67,
-            111,
-            110,
-            116,
-            97,
-            99,
-            116,
-            73,
-            100,
-            115,
-            0,
-            0,
-            0,
-            0,
-            0,
-        ]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = []
+        return self.__sender.send(METHOD_NAME, params)
 
     def getBlockedRecommendationIds(self):
+        """Get blocked recommendation ids."""
         METHOD_NAME = "getBlockedRecommendationIds"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            27,
-            103,
-            101,
-            116,
-            66,
-            108,
-            111,
-            99,
-            107,
-            101,
-            100,
-            82,
-            101,
-            99,
-            111,
-            109,
-            109,
-            101,
-            110,
-            100,
-            97,
-            116,
-            105,
-            111,
-            110,
-            73,
-            100,
-            115,
-            0,
-            0,
-            0,
-            0,
-            0,
-        ]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = []
+        return self.__sender.send(METHOD_NAME, params)
 
     def getAllReadMessageOps(self):
-        METHOD_NAME = "getAllReadMessageOps"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            17,
-            103,
-            101,
-            116,
-            76,
-            97,
-            115,
-            116,
-            79,
-            112,
-            82,
-            101,
-            118,
-            105,
-            115,
-            105,
-            111,
-            110,
-            0,
-            0,
-            0,
-            0,
-            0,
-        ]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        """
+        Get all read message ops.
 
-    def sendPostback(self, messageId, url, chatMID, originMID):
+        DEPRECATED: Avoid using this method unless you are confident in your understanding of its effects.
+        """
+        METHOD_NAME = "getAllReadMessageOps"
+        params = []
+        return self.__sender.send(METHOD_NAME, params)
+
+    def sendPostback(self, messageId: str, url: str, chatMID: str, originMID: str):
+        """
+        Send postback.
+
+        The url need start with `linepostback://postback?_data=`
+        """
         METHOD_NAME = "sendPostback"
-        """
-        :url: linepostback://postback?_data=
-        """
         params = [
-            [
-                12,
-                2,
-                [
-                    [11, 1, messageId],
-                    [11, 2, url],
-                    [11, 3, chatMID],
-                    [11, 4, originMID],
-                ],
-            ],
+            [11, 1, messageId],
+            [11, 2, url],
+            [11, 3, chatMID],
+            [11, 4, originMID],
         ]
-        sqrd = self.generateDummyProtocol("sendPostback", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [[12, 2, params]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def getPreviousMessagesV2WithRequest(
         self,
@@ -1479,7 +802,7 @@ class TalkService(BaseService):
                         2,
                         [
                             [10, 1, deliveredTime],
-                            [10, 1, messageId],
+                            [10, 2, messageId],
                         ],
                     ],
                     [8, 3, messagesCount],
@@ -1489,113 +812,69 @@ class TalkService(BaseService):
             ],
             [8, 3, 4],
         ]
-        sqrd = self.generateDummyProtocol(METHOD_NAME, params, 3)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getMessageBoxes(
         self,
-        minChatId=0,
-        maxChatId=0,
-        activeOnly=0,
-        messageBoxCountLimit=0,
-        withUnreadCount=False,
-        lastMessagesPerMessageBoxCount=False,
-        unreadOnly=False,
+        minChatId: str,
+        maxChatId: str,
+        activeOnly: bool,
+        messageBoxCountLimit: int,
+        withUnreadCount: bool,
+        lastMessagesPerMessageBoxCount: int,
+        unreadOnly: bool,
+        syncReason: int,
     ):
+        """Get message boxes"""
         METHOD_NAME = "getMessageBoxes"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            15,
-            103,
-            101,
-            116,
-            77,
-            101,
-            115,
-            115,
-            97,
-            103,
-            101,
-            66,
-            111,
-            120,
-            101,
-            115,
-            0,
-            0,
-            0,
-            0,
+        messageBoxListRequest = [
+            [11, 1, minChatId],
+            [11, 2, maxChatId],
+            [2, 3, activeOnly],
+            [8, 4, messageBoxCountLimit],
+            [2, 5, withUnreadCount],
+            [8, 6, lastMessagesPerMessageBoxCount],
+            [2, 7, unreadOnly],
         ]
-        sqrd += [12, 0, 2]
-        sqrd += [11, 0, 1, 0, 0, 0, len(minChatId)]
-        for value in minChatId:
-            sqrd.append(ord(value))
-        sqrd += [11, 0, 2, 0, 0, 0, len(maxChatId)]
-        for value in maxChatId:
-            sqrd.append(ord(value))
-        sqrd += [2, 0, 3, 0]  # activeOnly
-        sqrd += [8, 0, 4, 0, 0, 0, 200]  # messageBoxCountLimit
-        sqrd += [2, 0, 5, 0]  # withUnreadCount
-        sqrd += [8, 0, 6, 0, 0, 0, 200]  # lastMessagesPerMessageBoxCount
-        sqrd += [2, 0, 7]  # unreadOnly
-        sqrd += [0, 0]
-        sqrd += [8, 0, 3, 0, 0, 0, 7]
-        sqrd += [0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [
+            [12, 2, messageBoxListRequest],
+            [8, 3, syncReason],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getChatRoomAnnouncementsBulk(self, chatRoomMids: List[str]):
+    def getChatRoomAnnouncementsBulk(self, chatRoomMids: List[str], syncReason: int):
         """Get announcements for multiple groups at once."""
         METHOD_NAME = "getChatRoomAnnouncementsBulk"
-        params = [[15, 2, [11, chatRoomMids]], [8, 3, 0]]
-        sqrd = self.generateDummyProtocol("getChatRoomAnnouncementsBulk", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [[15, 2, [11, chatRoomMids]], [8, 3, syncReason]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def getChatRoomAnnouncements(self, chatRoomMid: str):
         """Get chat room announcements."""
         METHOD_NAME = "getChatRoomAnnouncements"
         params = [[11, 2, chatRoomMid]]
-        sqrd = self.generateDummyProtocol(METHOD_NAME, params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def removeChatRoomAnnouncement(self, chatRoomMid: str, announcementSeq: int):
         """Remove chat room announcement."""
         METHOD_NAME = "removeChatRoomAnnouncement"
         params = [
-            [8, 1, 0],
+            [8, 1, self.client.getCurrReqId()],
             [11, 2, chatRoomMid],
             [10, 3, announcementSeq],
         ]
-        sqrd = self.generateDummyProtocol(METHOD_NAME, params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def createChatRoomAnnouncement(
         self,
         chatRoomMid: str,
         text: str,
         link: str,
-        thumbnail: str = None,
-        type: int = 0,
+        thumbnail: Optional[str] = None,
+        _type: int = 0,
         displayFields: int = 5,
-        contentMetadata: str = None,
-        replace: str = None,
-        sticonOwnership: str = None,
-        postNotificationMetadata: str = None,
+        replace: Optional[str] = None,
+        sticonOwnership: Optional[str] = None,
+        postNotificationMetadata: Optional[str] = None,
     ):
         """Create chat room announcement."""
         METHOD_NAME = "createChatRoomAnnouncement"
@@ -1611,174 +890,114 @@ class TalkService(BaseService):
             [11, 4, thumbnail],
             [12, 5, contentMetadata],
         ]
-        params = [[8, 1, 0], [11, 2, chatRoomMid], [8, 3, type], [12, 4, contents]]
-        sqrd = self.generateDummyProtocol(METHOD_NAME, params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [
+            [8, 1, self.client.getCurrReqId()],
+            [11, 2, chatRoomMid],
+            [8, 3, _type],
+            [12, 4, contents],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def leaveRoom(self, roomIds):
+    def leaveRoom(self, roomId: str):
+        """Leave room."""
         METHOD_NAME = "leaveRoom"
-        sqrd = [128, 1, 0, 1] + self.getStringBytes("leaveRoom") + [0, 0, 0, 0]
-        sqrd += [8, 0, 1] + self.getIntBytes(0)  # reqSeq
-        sqrd += [11, 0, 2] + self.getStringBytes(roomIds)
-        sqrd += [0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [
+            [8, 1, self.client.getCurrReqId()],
+            [11, 2, roomId],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getRoomsV2(self, roomIds):
+    def getRoomsV2(self, roomIds: List[str]):
+        """Get room v2."""
         METHOD_NAME = "getRoomsV2"
-        sqrd = [128, 1, 0, 1] + self.getStringBytes("getRoomsV2") + [0, 0, 0, 0]
-        sqrd += [15, 0, 2, 11, 0, 0, 0, len(roomIds)]
-        for mid in roomIds:
-            sqrd += self.getStringBytes(mid)
-        sqrd += [0, 0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [
+            [15, 2, [11, roomIds]],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def createRoomV2(self, contactIds):
+    def createRoomV2(self, contactIds: List[str]):
+        """Create room v2."""
         METHOD_NAME = "createRoomV2"
-        sqrd = [128, 1, 0, 1] + self.getStringBytes("createRoomV2") + [0, 0, 0, 0]
-        sqrd += [8, 0, 1] + self.getIntBytes(0)  # reqSeq
-        sqrd += [15, 0, 2, 11, 0, 0, 0, len(contactIds)]
-        for mid in contactIds:
-            sqrd += self.getStringBytes(mid)
-        sqrd += [0, 0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [
+            [8, 1, self.client.getCurrReqId()],
+            [15, 2, [11, contactIds]],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
     def getCountries(self, countryGroup=1):
+        """Get countries."""
         METHOD_NAME = "getCountries"
-        sqrd = [128, 1, 0, 1] + self.getStringBytes("getCountries") + [0, 0, 0, 0]
-        sqrd += [8, 0, 2] + self.getIntBytes(countryGroup)
-        sqrd += [0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [
+            [8, 2, countryGroup],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
     def acquireEncryptedAccessToken(self, featureType=2):
+        """Acquire encrypted access token."""
         METHOD_NAME = "acquireEncryptedAccessToken"
-        sqrd = (
-            [128, 1, 0, 1]
-            + self.getStringBytes("acquireEncryptedAccessToken")
-            + [0, 0, 0, 0]
-        )
-        sqrd += [8, 0, 2] + self.getIntBytes(featureType)
-        sqrd += [0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [
+            [8, 2, featureType],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def blockContact(self, mid):
+    def blockContact(self, mid: str):
+        """Block contact."""
         METHOD_NAME = "blockContact"
-        sqrd = [128, 1, 0, 1] + self.getStringBytes("blockContact") + [0, 0, 0, 0]
-        sqrd += [8, 0, 1] + self.getIntBytes(0)  # reqSeq
-        sqrd += [11, 0, 2] + self.getStringBytes(mid)
-        sqrd += [0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [
+            [8, 1, self.client.getCurrReqId()],
+            [11, 2, mid],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def unblockContact(self, mid):
+    def unblockContact(self, mid, reference: Optional[str] = None):
+        """Unblock contact."""
         METHOD_NAME = "unblockContact"
-        sqrd = [128, 1, 0, 1] + self.getStringBytes("unblockContact") + [0, 0, 0, 0]
-        sqrd += [8, 0, 1] + self.getIntBytes(0)  # reqSeq
-        sqrd += [11, 0, 2] + self.getStringBytes(mid)
-        sqrd += [0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [
+            [8, 1, self.client.getCurrReqId()],
+            [11, 2, mid],
+            [11, 3, reference],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
     def getLastOpRevision(self):
+        """Get last op revision."""
         METHOD_NAME = "getLastOpRevision"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            17,
-            103,
-            101,
-            116,
-            76,
-            97,
-            115,
-            116,
-            79,
-            112,
-            82,
-            101,
-            118,
-            105,
-            115,
-            105,
-            111,
-            110,
-            0,
-            0,
-            0,
-            0,
-            0,
-        ]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = []
+        return self.__sender.send(METHOD_NAME, params)
 
     def getServerTime(self):
+        """Get server time."""
         METHOD_NAME = "getServerTime"
-        sqrd = [
-            128,
-            1,
-            0,
-            1,
-            0,
-            0,
-            0,
-            13,
-            103,
-            101,
-            116,
-            83,
-            101,
-            114,
-            118,
-            101,
-            114,
-            84,
-            105,
-            109,
-            101,
-            0,
-            0,
-            0,
-            0,
-            0,
-        ]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = []
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getConfigurations(self):
+    def getConfigurations(
+        self,
+        revision: Optional[int] = None,
+        regionOfUsim: Optional[str] = None,
+        regionOfTelephone: Optional[str] = None,
+        regionOfLocale: Optional[str] = None,
+        carrier: Optional[str] = None,
+        syncReason: Optional[int] = None,
+    ):
         """Get configurations."""
         METHOD_NAME = "getConfigurations"
-        params = []
-        sqrd = self.generateDummyProtocol(
-            METHOD_NAME, params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"{__class__.__name__}.{METHOD_NAME}",
-        )
+        params = [
+            [10, 2, revision],
+            [11, 3, regionOfUsim],
+            [11, 4, regionOfTelephone],
+            [11, 5, regionOfLocale],
+            [11, 6, carrier],
+            [8, 7, syncReason],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def fetchOps(self, revision, count=100):
+    def fetchOps(self, revision: int, count=100):
+        """
+        Fetch ops.
+
+        DEPRECATED: Use 'sync' instead.
+        """
         METHOD_NAME = "fetchOps"
         params = [
             [10, 2, revision],
@@ -1786,9 +1005,9 @@ class TalkService(BaseService):
             [10, 4, self.globalRev],
             [10, 5, self.individualRev],
         ]
-        sqrd = self.generateDummyProtocol("fetchOps", params, 4)
-        hr = self.server.additionalHeaders(
-            self.server.Headers,
+        sqrd = self.client.generateDummyProtocol("fetchOps", params, 4)
+        hr = self.client.server.additionalHeaders(
+            self.client.server.Headers,
             {
                 # "x-lst": "110000",
                 "x-las": "F",  # or "B" if background
@@ -1797,7 +1016,7 @@ class TalkService(BaseService):
             },
         )
         try:
-            data = self.postPackDataAndGetUnpackRespData(
+            data = self.client.postPackDataAndGetUnpackRespData(
                 "/P5",
                 sqrd,
                 5,
@@ -1808,19 +1027,26 @@ class TalkService(BaseService):
             )
             if data is None:
                 return []
-            if "error" not in data:
-                for op in data:
-                    if self.checkAndGetValue(op, "type", "val_3", 3) == 0:
-                        param1 = self.checkAndGetValue(op, "param1", "val_10", 10)
-                        param2 = self.checkAndGetValue(op, "param2", "val_11", 11)
-                        if param1 is not None:
-                            a = param1.split("\x1e")
-                            self.individualRev = a[0]
-                            self.log(f"individualRev: {self.individualRev}", True)
-                        if param2 is not None:
-                            b = param2.split("\x1e")
-                            self.globalRev = b[0]
-                            self.log(f"globalRev: {self.globalRev}", True)
+            if not (isinstance(data, dict) and "error" in data):
+                if isinstance(data, list):
+                    for op in data:
+                        if self.client.checkAndGetValue(op, "type", "val_3", 3) == 0:
+                            param1 = self.client.checkAndGetValue(
+                                op, "param1", "val_10", 10
+                            )
+                            param2 = self.client.checkAndGetValue(
+                                op, "param2", "val_11", 11
+                            )
+                            if param1 is not None:
+                                a = param1.split("\x1e")
+                                self.individualRev = a[0]
+                                self.client.log(
+                                    f"individualRev: {self.individualRev}", True
+                                )
+                            if param2 is not None:
+                                b = param2.split("\x1e")
+                                self.globalRev = b[0]
+                                self.client.log(f"globalRev: {self.globalRev}", True)
                 return data
             else:
                 raise Exception(data["error"])
@@ -1828,261 +1054,329 @@ class TalkService(BaseService):
             pass
         return []
 
-    def fetchOperations(self, localRev, count=100):
+    def fetchOperations(self, localRev: int, count=100):
+        """
+        Fetch operations.
+
+        DEPRECATED: Use 'fetchOps' instead.
+        """
         METHOD_NAME = "fetchOperations"
         params = [
             [10, 2, localRev],
             [8, 3, count],
         ]
-        sqrd = self.generateDummyProtocol("fetchOperations", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            "/S4", sqrd, 4, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def sendEchoPush(self, text):
+    def sendEchoPush(self, text: str):
+        """
+        Send echo push.
+
+        DEPRECATED: Avoid using this method unless you are confident in your understanding of its effects.
+        """
         METHOD_NAME = "sendEchoPush"
         # for long poll? check conn is alive
         # text: 1614384862517 = time
-        sqrd = [128, 1, 0, 1] + self.getStringBytes("sendEchoPush") + [0, 0, 0, 0]
-        sqrd += [11, 0, 2] + self.getStringBytes(text)
-        sqrd += [0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [
+            [11, 2, text],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
     def getRepairElements(
         self, profile: bool = True, settings: bool = False, syncReason: int = 5
     ):
+        """Get repair elements."""
         METHOD_NAME = "getRepairElements"
         params = [
-            [
-                12,
-                1,
-                [
-                    [2, 1, profile],
-                    [2, 2, settings],
-                    [8, 11, syncReason],
-                ],
-            ]
+            [2, 1, profile],
+            [2, 2, settings],
+            [8, 11, syncReason],
         ]
-        sqrd = self.generateDummyProtocol("getRepairElements", params, 4)
-        return self.postPackDataAndGetUnpackRespData(self.LINE_NORMAL_ENDPOINT, sqrd, 4)
+        params = [[12, 1, params]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSettingsAttributes2(self, attributesToRetrieve: list):
+        """
+        Get settings attributes2
+
+            NOTIFICATION_ENABLE(0),
+            NOTIFICATION_MUTE_EXPIRATION(1),
+            NOTIFICATION_NEW_MESSAGE(2),
+            NOTIFICATION_GROUP_INVITATION(3),
+            NOTIFICATION_SHOW_MESSAGE(4),
+            NOTIFICATION_INCOMING_CALL(5),
+            NOTIFICATION_SOUND_MESSAGE(8),
+            NOTIFICATION_SOUND_GROUP(9),
+            NOTIFICATION_DISABLED_WITH_SUB(16),
+            NOTIFICATION_PAYMENT(17),
+            NOTIFICATION_MENTION(40),
+            NOTIFICATION_THUMBNAIL(45),
+            NOTIFICATION_BADGE_TALK_ONLY(65),
+            NOTIFICATION_REACTION(67),
+            PRIVACY_SYNC_CONTACTS(6),
+            PRIVACY_SEARCH_BY_PHONE_NUMBER(7),
+            PRIVACY_SEARCH_BY_USERID(13),
+            PRIVACY_SEARCH_BY_EMAIL(14),
+            PRIVACY_SHARE_PERSONAL_INFO_TO_FRIENDS(51),
+            PRIVACY_ALLOW_SECONDARY_DEVICE_LOGIN(21),
+            PRIVACY_PROFILE_IMAGE_POST_TO_MYHOME(23),
+            PRIVACY_PROFILE_MUSIC_POST_TO_MYHOME(35),
+            PRIVACY_PROFILE_HISTORY(57),
+            PRIVACY_STATUS_MESSAGE_HISTORY(54),
+            PRIVACY_ALLOW_FRIEND_REQUEST(30),
+            PRIVACY_RECV_MESSAGES_FROM_NOT_FRIEND(25),
+            PRIVACY_AGREE_USE_LINECOIN_TO_PAIDCALL(26),
+            PRIVACY_AGREE_USE_PAIDCALL(27),
+            PRIVACY_AGE_RESULT(60),
+            PRIVACY_AGE_RESULT_RECEIVED(61),
+            PRIVACY_ALLOW_FOLLOW(63),
+            PRIVACY_SHOW_FOLLOW_LIST(64),
+            CONTACT_MY_TICKET(10),
+            IDENTITY_PROVIDER(11),
+            IDENTITY_IDENTIFIER(12),
+            SNS_ACCOUNT(19),
+            PHONE_REGISTRATION(20),
+            PWLESS_PRIMARY_CREDENTIAL_REGISTRATION(31),
+            ALLOWED_TO_CONNECT_EAP_ACCOUNT(32),
+            PREFERENCE_LOCALE(15),
+            CUSTOM_MODE(22),
+            EMAIL_CONFIRMATION_STATUS(24),
+            ACCOUNT_MIGRATION_PINCODE(28),
+            ENFORCED_INPUT_ACCOUNT_MIGRATION_PINCODE(29),
+            SECURITY_CENTER_SETTINGS(18),
+            E2EE_ENABLE(33),
+            HITOKOTO_BACKUP_REQUESTED(34),
+            CONTACT_ALLOW_FOLLOWING(36),
+            PRIVACY_ALLOW_NEARBY(37),
+            AGREEMENT_NEARBY(38),
+            AGREEMENT_SQUARE(39),
+            ALLOW_UNREGISTRATION_SECONDARY_DEVICE(41),
+            AGREEMENT_BOT_USE(42),
+            AGREEMENT_SHAKE_FUNCTION(43),
+            AGREEMENT_MOBILE_CONTACT_NAME(44),
+            AGREEMENT_SOUND_TO_TEXT(46),
+            AGREEMENT_PRIVACY_POLICY_VERSION(47),
+            AGREEMENT_AD_BY_WEB_ACCESS(48),
+            AGREEMENT_PHONE_NUMBER_MATCHING(49),
+            AGREEMENT_COMMUNICATION_INFO(50),
+            AGREEMENT_THINGS_WIRELESS_COMMUNICATION(52),
+            AGREEMENT_GDPR(53),
+            AGREEMENT_PROVIDE_LOCATION(55),
+            AGREEMENT_BEACON(56),
+            AGREEMENT_CONTENTS_SUGGEST(58),
+            AGREEMENT_CONTENTS_SUGGEST_DATA_COLLECTION(59),
+            AGREEMENT_OCR_IMAGE_COLLECTION(62),
+            AGREEMENT_ICNA(66),
+            AGREEMENT_MID(68),
+            HOME_NOTIFICATION_NEW_FRIEND(69),
+            HOME_NOTIFICATION_FAVORITE_FRIEND_UPDATE(70),
+            HOME_NOTIFICATION_GROUP_MEMBER_UPDATE(71),
+            HOME_NOTIFICATION_BIRTHDAY(72),
+            AGREEMENT_LINE_OUT_USE(73),
+            AGREEMENT_LINE_OUT_PROVIDE_INFO(74);
+            NOTIFICATION_ENABLE(0),
+            NOTIFICATION_MUTE_EXPIRATION(1),
+            NOTIFICATION_NEW_MESSAGE(2),
+            NOTIFICATION_GROUP_INVITATION(3),
+            NOTIFICATION_SHOW_MESSAGE(4),
+            NOTIFICATION_INCOMING_CALL(5),
+            NOTIFICATION_SOUND_MESSAGE(8),
+            NOTIFICATION_SOUND_GROUP(9),
+            NOTIFICATION_DISABLED_WITH_SUB(16),
+            NOTIFICATION_PAYMENT(17),
+            NOTIFICATION_MENTION(40),
+            NOTIFICATION_THUMBNAIL(45),
+            NOTIFICATION_BADGE_TALK_ONLY(65),
+            NOTIFICATION_REACTION(67),
+            PRIVACY_SYNC_CONTACTS(6),
+            PRIVACY_SEARCH_BY_PHONE_NUMBER(7),
+            PRIVACY_SEARCH_BY_USERID(13),
+            PRIVACY_SEARCH_BY_EMAIL(14),
+            PRIVACY_SHARE_PERSONAL_INFO_TO_FRIENDS(51),
+            PRIVACY_ALLOW_SECONDARY_DEVICE_LOGIN(21),
+            PRIVACY_PROFILE_IMAGE_POST_TO_MYHOME(23),
+            PRIVACY_PROFILE_MUSIC_POST_TO_MYHOME(35),
+            PRIVACY_PROFILE_HISTORY(57),
+            PRIVACY_STATUS_MESSAGE_HISTORY(54),
+            PRIVACY_ALLOW_FRIEND_REQUEST(30),
+            PRIVACY_RECV_MESSAGES_FROM_NOT_FRIEND(25),
+            PRIVACY_AGREE_USE_LINECOIN_TO_PAIDCALL(26),
+            PRIVACY_AGREE_USE_PAIDCALL(27),
+            PRIVACY_AGE_RESULT(60),
+            PRIVACY_AGE_RESULT_RECEIVED(61),
+            PRIVACY_ALLOW_FOLLOW(63),
+            PRIVACY_SHOW_FOLLOW_LIST(64),
+            CONTACT_MY_TICKET(10),
+            IDENTITY_PROVIDER(11),
+            IDENTITY_IDENTIFIER(12),
+            SNS_ACCOUNT(19),
+            PHONE_REGISTRATION(20),
+            PWLESS_PRIMARY_CREDENTIAL_REGISTRATION(31),
+            ALLOWED_TO_CONNECT_EAP_ACCOUNT(32),
+            PREFERENCE_LOCALE(15),
+            CUSTOM_MODE(22),
+            EMAIL_CONFIRMATION_STATUS(24),
+            ACCOUNT_MIGRATION_PINCODE(28),
+            ENFORCED_INPUT_ACCOUNT_MIGRATION_PINCODE(29),
+            SECURITY_CENTER_SETTINGS(18),
+            E2EE_ENABLE(33),
+            HITOKOTO_BACKUP_REQUESTED(34),
+            CONTACT_ALLOW_FOLLOWING(36),
+            PRIVACY_ALLOW_NEARBY(37),
+            AGREEMENT_NEARBY(38),
+            AGREEMENT_SQUARE(39),
+            ALLOW_UNREGISTRATION_SECONDARY_DEVICE(41),
+            AGREEMENT_BOT_USE(42),
+            AGREEMENT_SHAKE_FUNCTION(43),
+            AGREEMENT_MOBILE_CONTACT_NAME(44),
+            AGREEMENT_SOUND_TO_TEXT(46),
+            AGREEMENT_PRIVACY_POLICY_VERSION(47),
+            AGREEMENT_AD_BY_WEB_ACCESS(48),
+            AGREEMENT_PHONE_NUMBER_MATCHING(49),
+            AGREEMENT_COMMUNICATION_INFO(50),
+            AGREEMENT_THINGS_WIRELESS_COMMUNICATION(52),
+            AGREEMENT_GDPR(53),
+            AGREEMENT_PROVIDE_LOCATION(55),
+            AGREEMENT_BEACON(56),
+            AGREEMENT_CONTENTS_SUGGEST(58),
+            AGREEMENT_CONTENTS_SUGGEST_DATA_COLLECTION(59),
+            AGREEMENT_OCR_IMAGE_COLLECTION(62),
+            AGREEMENT_ICNA(66),
+            AGREEMENT_MID(68),
+            HOME_NOTIFICATION_NEW_FRIEND(69),
+            HOME_NOTIFICATION_FAVORITE_FRIEND_UPDATE(70),
+            HOME_NOTIFICATION_GROUP_MEMBER_UPDATE(71),
+            HOME_NOTIFICATION_BIRTHDAY(72),
+            AGREEMENT_LINE_OUT_USE(73),
+            AGREEMENT_LINE_OUT_PROVIDE_INFO(74);
+        """
         METHOD_NAME = "getSettingsAttributes2"
-        """
-            NOTIFICATION_ENABLE(0),
-            NOTIFICATION_MUTE_EXPIRATION(1),
-            NOTIFICATION_NEW_MESSAGE(2),
-            NOTIFICATION_GROUP_INVITATION(3),
-            NOTIFICATION_SHOW_MESSAGE(4),
-            NOTIFICATION_INCOMING_CALL(5),
-            NOTIFICATION_SOUND_MESSAGE(8),
-            NOTIFICATION_SOUND_GROUP(9),
-            NOTIFICATION_DISABLED_WITH_SUB(16),
-            NOTIFICATION_PAYMENT(17),
-            NOTIFICATION_MENTION(40),
-            NOTIFICATION_THUMBNAIL(45),
-            NOTIFICATION_BADGE_TALK_ONLY(65),
-            NOTIFICATION_REACTION(67),
-            PRIVACY_SYNC_CONTACTS(6),
-            PRIVACY_SEARCH_BY_PHONE_NUMBER(7),
-            PRIVACY_SEARCH_BY_USERID(13),
-            PRIVACY_SEARCH_BY_EMAIL(14),
-            PRIVACY_SHARE_PERSONAL_INFO_TO_FRIENDS(51),
-            PRIVACY_ALLOW_SECONDARY_DEVICE_LOGIN(21),
-            PRIVACY_PROFILE_IMAGE_POST_TO_MYHOME(23),
-            PRIVACY_PROFILE_MUSIC_POST_TO_MYHOME(35),
-            PRIVACY_PROFILE_HISTORY(57),
-            PRIVACY_STATUS_MESSAGE_HISTORY(54),
-            PRIVACY_ALLOW_FRIEND_REQUEST(30),
-            PRIVACY_RECV_MESSAGES_FROM_NOT_FRIEND(25),
-            PRIVACY_AGREE_USE_LINECOIN_TO_PAIDCALL(26),
-            PRIVACY_AGREE_USE_PAIDCALL(27),
-            PRIVACY_AGE_RESULT(60),
-            PRIVACY_AGE_RESULT_RECEIVED(61),
-            PRIVACY_ALLOW_FOLLOW(63),
-            PRIVACY_SHOW_FOLLOW_LIST(64),
-            CONTACT_MY_TICKET(10),
-            IDENTITY_PROVIDER(11),
-            IDENTITY_IDENTIFIER(12),
-            SNS_ACCOUNT(19),
-            PHONE_REGISTRATION(20),
-            PWLESS_PRIMARY_CREDENTIAL_REGISTRATION(31),
-            ALLOWED_TO_CONNECT_EAP_ACCOUNT(32),
-            PREFERENCE_LOCALE(15),
-            CUSTOM_MODE(22),
-            EMAIL_CONFIRMATION_STATUS(24),
-            ACCOUNT_MIGRATION_PINCODE(28),
-            ENFORCED_INPUT_ACCOUNT_MIGRATION_PINCODE(29),
-            SECURITY_CENTER_SETTINGS(18),
-            E2EE_ENABLE(33),
-            HITOKOTO_BACKUP_REQUESTED(34),
-            CONTACT_ALLOW_FOLLOWING(36),
-            PRIVACY_ALLOW_NEARBY(37),
-            AGREEMENT_NEARBY(38),
-            AGREEMENT_SQUARE(39),
-            ALLOW_UNREGISTRATION_SECONDARY_DEVICE(41),
-            AGREEMENT_BOT_USE(42),
-            AGREEMENT_SHAKE_FUNCTION(43),
-            AGREEMENT_MOBILE_CONTACT_NAME(44),
-            AGREEMENT_SOUND_TO_TEXT(46),
-            AGREEMENT_PRIVACY_POLICY_VERSION(47),
-            AGREEMENT_AD_BY_WEB_ACCESS(48),
-            AGREEMENT_PHONE_NUMBER_MATCHING(49),
-            AGREEMENT_COMMUNICATION_INFO(50),
-            AGREEMENT_THINGS_WIRELESS_COMMUNICATION(52),
-            AGREEMENT_GDPR(53),
-            AGREEMENT_PROVIDE_LOCATION(55),
-            AGREEMENT_BEACON(56),
-            AGREEMENT_CONTENTS_SUGGEST(58),
-            AGREEMENT_CONTENTS_SUGGEST_DATA_COLLECTION(59),
-            AGREEMENT_OCR_IMAGE_COLLECTION(62),
-            AGREEMENT_ICNA(66),
-            AGREEMENT_MID(68),
-            HOME_NOTIFICATION_NEW_FRIEND(69),
-            HOME_NOTIFICATION_FAVORITE_FRIEND_UPDATE(70),
-            HOME_NOTIFICATION_GROUP_MEMBER_UPDATE(71),
-            HOME_NOTIFICATION_BIRTHDAY(72),
-            AGREEMENT_LINE_OUT_USE(73),
-            AGREEMENT_LINE_OUT_PROVIDE_INFO(74);
-            NOTIFICATION_ENABLE(0),
-            NOTIFICATION_MUTE_EXPIRATION(1),
-            NOTIFICATION_NEW_MESSAGE(2),
-            NOTIFICATION_GROUP_INVITATION(3),
-            NOTIFICATION_SHOW_MESSAGE(4),
-            NOTIFICATION_INCOMING_CALL(5),
-            NOTIFICATION_SOUND_MESSAGE(8),
-            NOTIFICATION_SOUND_GROUP(9),
-            NOTIFICATION_DISABLED_WITH_SUB(16),
-            NOTIFICATION_PAYMENT(17),
-            NOTIFICATION_MENTION(40),
-            NOTIFICATION_THUMBNAIL(45),
-            NOTIFICATION_BADGE_TALK_ONLY(65),
-            NOTIFICATION_REACTION(67),
-            PRIVACY_SYNC_CONTACTS(6),
-            PRIVACY_SEARCH_BY_PHONE_NUMBER(7),
-            PRIVACY_SEARCH_BY_USERID(13),
-            PRIVACY_SEARCH_BY_EMAIL(14),
-            PRIVACY_SHARE_PERSONAL_INFO_TO_FRIENDS(51),
-            PRIVACY_ALLOW_SECONDARY_DEVICE_LOGIN(21),
-            PRIVACY_PROFILE_IMAGE_POST_TO_MYHOME(23),
-            PRIVACY_PROFILE_MUSIC_POST_TO_MYHOME(35),
-            PRIVACY_PROFILE_HISTORY(57),
-            PRIVACY_STATUS_MESSAGE_HISTORY(54),
-            PRIVACY_ALLOW_FRIEND_REQUEST(30),
-            PRIVACY_RECV_MESSAGES_FROM_NOT_FRIEND(25),
-            PRIVACY_AGREE_USE_LINECOIN_TO_PAIDCALL(26),
-            PRIVACY_AGREE_USE_PAIDCALL(27),
-            PRIVACY_AGE_RESULT(60),
-            PRIVACY_AGE_RESULT_RECEIVED(61),
-            PRIVACY_ALLOW_FOLLOW(63),
-            PRIVACY_SHOW_FOLLOW_LIST(64),
-            CONTACT_MY_TICKET(10),
-            IDENTITY_PROVIDER(11),
-            IDENTITY_IDENTIFIER(12),
-            SNS_ACCOUNT(19),
-            PHONE_REGISTRATION(20),
-            PWLESS_PRIMARY_CREDENTIAL_REGISTRATION(31),
-            ALLOWED_TO_CONNECT_EAP_ACCOUNT(32),
-            PREFERENCE_LOCALE(15),
-            CUSTOM_MODE(22),
-            EMAIL_CONFIRMATION_STATUS(24),
-            ACCOUNT_MIGRATION_PINCODE(28),
-            ENFORCED_INPUT_ACCOUNT_MIGRATION_PINCODE(29),
-            SECURITY_CENTER_SETTINGS(18),
-            E2EE_ENABLE(33),
-            HITOKOTO_BACKUP_REQUESTED(34),
-            CONTACT_ALLOW_FOLLOWING(36),
-            PRIVACY_ALLOW_NEARBY(37),
-            AGREEMENT_NEARBY(38),
-            AGREEMENT_SQUARE(39),
-            ALLOW_UNREGISTRATION_SECONDARY_DEVICE(41),
-            AGREEMENT_BOT_USE(42),
-            AGREEMENT_SHAKE_FUNCTION(43),
-            AGREEMENT_MOBILE_CONTACT_NAME(44),
-            AGREEMENT_SOUND_TO_TEXT(46),
-            AGREEMENT_PRIVACY_POLICY_VERSION(47),
-            AGREEMENT_AD_BY_WEB_ACCESS(48),
-            AGREEMENT_PHONE_NUMBER_MATCHING(49),
-            AGREEMENT_COMMUNICATION_INFO(50),
-            AGREEMENT_THINGS_WIRELESS_COMMUNICATION(52),
-            AGREEMENT_GDPR(53),
-            AGREEMENT_PROVIDE_LOCATION(55),
-            AGREEMENT_BEACON(56),
-            AGREEMENT_CONTENTS_SUGGEST(58),
-            AGREEMENT_CONTENTS_SUGGEST_DATA_COLLECTION(59),
-            AGREEMENT_OCR_IMAGE_COLLECTION(62),
-            AGREEMENT_ICNA(66),
-            AGREEMENT_MID(68),
-            HOME_NOTIFICATION_NEW_FRIEND(69),
-            HOME_NOTIFICATION_FAVORITE_FRIEND_UPDATE(70),
-            HOME_NOTIFICATION_GROUP_MEMBER_UPDATE(71),
-            HOME_NOTIFICATION_BIRTHDAY(72),
-            AGREEMENT_LINE_OUT_USE(73),
-            AGREEMENT_LINE_OUT_PROVIDE_INFO(74);
-        """
-        if type(attributesToRetrieve) != list:
+        if not isinstance(attributesToRetrieve, list):
             attributesToRetrieve = [attributesToRetrieve]
             print("[attributesToRetrieve] plz using LIST")
-        sqrd = (
-            [128, 1, 0, 1]
-            + self.getStringBytes("getSettingsAttributes2")
-            + [0, 0, 0, 0]
-        )
-        sqrd += [14, 0, 2, 8, 0, 0, 0, len(attributesToRetrieve)]
-        for value in attributesToRetrieve:
-            sqrd += self.getIntBytes(value)
-        sqrd += [0, 0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [[14, 2, [8, attributesToRetrieve]]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def updateSettingsAttributes2(self, settings: dict, attributesToUpdate: list):
+        """Update settings attributes2."""
         METHOD_NAME = "updateSettingsAttributes2"
-        if type(attributesToUpdate) != list:
-            attributesToRetrieve = [attributesToUpdate]
+        if not isinstance(attributesToUpdate, list):
+            attributesToUpdate = [attributesToUpdate]
             print("[attributesToRetrieve] plz using LIST")
-        sqrd = (
-            [128, 1, 0, 1]
-            + self.getStringBytes("updateSettingsAttributes2")
-            + [0, 0, 0, 0]
-        )
-        sqrd += [8, 0, 1] + self.getIntBytes(0)  # reqSeq
-        sqrd += [12, 0, 3]
-        for sk, sv in settings.items():
-            svt = type(sv)
-            if svt == bool:
-                sqrd += [2, 0, sk, int(sv)]
-            elif svt == int:
-                sqrd += [10, 0, sk] + self.getIntBytes(sv, 8)
-            else:
-                print(f"[updateSettingsAttributes2] not support type {svt} (id: {sk})")
-        sqrd += [0]
-        sqrd += [14, 0, 4, 8, 0, 0, 0, len(attributesToUpdate)]
-        for value in attributesToUpdate:
-            sqrd += self.getIntBytes(value)
-        sqrd += [0, 0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        settings_type = {
+            10: 2,
+            11: 10,
+            12: 2,
+            13: 2,
+            14: 2,
+            15: 2,
+            16: 11,
+            17: 11,
+            18: 2,
+            19: 2,
+            20: 2,
+            21: 2,
+            22: 2,
+            23: 2,
+            24: 2,
+            25: 2,
+            26: 2,
+            27: 2,
+            28: 2,
+            29: 2,
+            30: 11,
+            40: 8,
+            41: 11,
+            42: 13,
+            43: 2,
+            44: 8,
+            45: 8,
+            46: 2,
+            47: 8,
+            48: 2,
+            49: 2,
+            50: 11,
+            60: 13,
+            61: 2,
+            62: 2,
+            63: 2,
+            65: 2,
+            66: 10,
+            67: 10,
+            68: 2,
+            69: 10,
+            70: 10,
+            71: 10,
+            72: 2,
+            73: 10,
+            74: 11,
+            75: 10,
+            76: 10,
+            77: 10,
+            78: 8,
+            79: 10,
+            80: 10,
+            81: 8,
+            82: 10,
+            83: 10,
+            85: 8,
+            86: 10,
+            87: 10,
+            88: 8,
+            89: 2,
+            90: 10,
+            91: 2,
+            92: 2,
+            93: 2,
+            94: 10,
+            95: 2,
+            96: 10,
+            97: 2,
+            98: 2,
+            99: 2,
+            100: 2,
+            101: 13,
+            102: 10,
+            103: 10,
+            104: 2,
+            105: 10,
+            106: 11,
+            107: 2,
+            108: 10,
+            109: 2,
+            110: 10,
+            112: 10,
+            113: 10,
+            114: 10,
+            115: 10,
+            116: 10,
+            117: 10,
+            118: 10,
+            119: 10,
+            120: 10,
+        }
+        setting = []
+        for k, v in settings:
+            v2 = settings_type.get(k)
+            if v2 is not None and v2 != 13:
+                setting.append([v2, k, v])
+        params = [
+            [8, 1, self.client.getCurrReqId()],
+            [12, 3, setting],
+            [14, 4, [8, attributesToUpdate]],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def rejectChatInvitation(self, chatMid):
+    def rejectChatInvitation(self, chatMid: str):
+        """Reject chat invitation."""
         METHOD_NAME = "rejectChatInvitation"
-        sqrd = (
-            [128, 1, 0, 1] + self.getStringBytes("rejectChatInvitation") + [0, 0, 0, 0]
-        )
-        sqrd += [12, 0, 1]
-        sqrd += [8, 0, 1] + self.getIntBytes(0)  # reqSeq
-        sqrd += [11, 0, 2] + self.getStringBytes(chatMid)
-        sqrd += [0, 0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [[8, 1, self.client.getCurrReqId()], [11, 2, chatMid]]
+        params = [[12, 1, params]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def updateProfileAttribute(self, attr: int, value: str):
-        METHOD_NAME = "updateProfileAttribute"
         """
+        Update profile attribute.
+
         attr:
             ALL(0),
             EMAIL(1),
@@ -2096,77 +1390,74 @@ class TalkService(BaseService):
             MUSIC_PROFILE(256),
             AVATAR_PROFILE(512);
         """
+        METHOD_NAME = "updateProfileAttribute"
         params = [[8, 1, 0], [8, 2, attr], [11, 3, value]]
-        sqrd = self.generateDummyProtocol("updateProfileAttribute", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getE2EEPublicKey(self, mid, keyVersion, keyId):
+    def getE2EEPublicKey(self, mid: str, keyVersion: int, keyId: int):
+        """Get E2EE public key."""
         METHOD_NAME = "getE2EEPublicKey"
         params = [[11, 2, mid], [8, 3, keyVersion], [8, 4, keyId]]
-        sqrd = self.generateDummyProtocol("getE2EEPublicKey", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getE2EEPublicKeys(self):
+        """Get E2EE public keys."""
         METHOD_NAME = "getE2EEPublicKeys"
         params = []
-        sqrd = self.generateDummyProtocol("getE2EEPublicKeys", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getE2EEPublicKeysEx(self, ignoreE2EEStatus: int):
+        """
+        Get E2EE public keys ex.
+
+        DEPRECATED: Avoid using this method unless you are confident in your understanding of its effects.
+        """
         METHOD_NAME = "getE2EEPublicKeysEx"
         params = []
-        sqrd = self.generateDummyProtocol("getE2EEPublicKeysEx", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def removeE2EEPublicKey(self, spec, keyId, keyData):
+        """
+        Remove E2EE public key.
+
+        DEPRECATED: Avoid using this method unless you are confident in your understanding of its effects.
+        """
         METHOD_NAME = "removeE2EEPublicKey"
         params = [[12, 2, [[8, 1, spec], [8, 2, keyId], [11, 4, keyData]]]]
-        sqrd = self.generateDummyProtocol("removeE2EEPublicKey", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def registerE2EEPublicKey(self, version: int, keyId: int, keyData: str, time: int):
+    def registerE2EEPublicKey(
+        self, version: int, keyId: Optional[int], keyData: str, time: int
+    ):
+        """Register E2EE public key."""
         METHOD_NAME = "registerE2EEPublicKey"
         params = [
-            [
-                12,
-                2,
-                [
-                    [8, 1, version],
-                    [8, 2, keyId],
-                    [11, 4, keyData],
-                    [10, 5, time],
-                ],
-            ]
+            [8, 1, version],
+            [8, 2, keyId],
+            [11, 4, keyData],
+            [10, 5, time],
         ]
-        sqrd = self.generateDummyProtocol("registerE2EEPublicKey", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [
+            [8, 1, self.client.getCurrReqId()],
+            [12, 2, params],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
     def registerE2EEGroupKey(
         self,
         keyVersion: int,
         chatMid: str,
-        members: list,
-        keyIds: list,
-        encryptedSharedKeys: list,
+        members: List[str],
+        keyIds: List[int],
+        encryptedSharedKeys: List[ByteString],
     ):
+        """Register E2EE group key."""
         METHOD_NAME = "registerE2EEGroupKey"
-        if type(members) != list:
+        if not isinstance(members, list):
             raise Exception("[registerE2EEGroupKey] members must be a list")
-        if type(keyIds) != list:
+        if not isinstance(keyIds, list):
             raise Exception("[registerE2EEGroupKey] keyIds must be a list")
-        if type(encryptedSharedKeys) != list:
+        if not isinstance(encryptedSharedKeys, list):
             raise Exception("[registerE2EEGroupKey] encryptedSharedKeys must be a list")
         params = [
             [8, 2, keyVersion],
@@ -2175,47 +1466,39 @@ class TalkService(BaseService):
             [15, 5, [8, keyIds]],
             [15, 6, [11, encryptedSharedKeys]],
         ]
-        sqrd = self.generateDummyProtocol("registerE2EEGroupKey", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getE2EEGroupSharedKey(self, keyVersion: int, chatMid: str, groupKeyId: int):
+        """Get E2EE group shared key."""
         METHOD_NAME = "getE2EEGroupSharedKey"
         params = [
             [8, 2, keyVersion],
             [11, 3, chatMid],
             [8, 4, groupKeyId],
         ]
-        sqrd = self.generateDummyProtocol("getE2EEGroupSharedKey", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getLastE2EEGroupSharedKey(self, keyVersion: int, chatMid: str):
+        """Get last E2EE group shared key."""
         METHOD_NAME = "getLastE2EEGroupSharedKey"
         params = [
             [8, 2, keyVersion],
             [11, 3, chatMid],
         ]
-        sqrd = self.generateDummyProtocol("getLastE2EEGroupSharedKey", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getLastE2EEPublicKeys(self, chatMid: str):
+        """Get last E2EE public keys."""
         METHOD_NAME = "getLastE2EEPublicKeys"
         params = [
             [11, 2, chatMid],
         ]
-        sqrd = self.generateDummyProtocol("getLastE2EEPublicKeys", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def requestE2EEKeyExchange(
         self, temporalPublicKey: bytes, keyVersion: int, keyId: int, verifier: str
     ):
+        """Request E2EE key exchange."""
         METHOD_NAME = "requestE2EEKeyExchange"
         params = [
             [8, 1, 0],  # reqSeq
@@ -2223,470 +1506,502 @@ class TalkService(BaseService):
             [12, 3, [[8, 1, keyVersion], [8, 2, keyId]]],
             [11, 4, verifier],
         ]
-        sqrd = self.generateDummyProtocol("requestE2EEKeyExchange", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def respondE2EEKeyExchange(self, encryptedKeyChain: str, hashKeyChain: str):
+        """Respond E2EE key exchange."""
         METHOD_NAME = "respondE2EEKeyExchange"
         params = [
             [8, 1, 0],  # reqSeq
             [11, 2, encryptedKeyChain],
             [11, 3, hashKeyChain],
         ]
-        sqrd = self.generateDummyProtocol("respondE2EEKeyExchange", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def negotiateE2EEPublicKey(self, mid: str):
+        """Negotiate E2EE public key."""
         METHOD_NAME = "negotiateE2EEPublicKey"
         params = [
             [11, 2, mid],
         ]
-        sqrd = self.generateDummyProtocol(METHOD_NAME, params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def react(self, messageId, reactionType=5):
+    def react(
+        self,
+        messageId: int,
+        reactionType: Optional[int] = 5,
+        productId: Optional[str] = None,
+        emojiId: Optional[str] = None,
+        resourceType: Optional[int] = 1,
+        version: Optional[int] = 1,
+    ):
+        """React to message."""
         METHOD_NAME = "react"
-        params = [
-            [12, 1, [[8, 1, 0], [10, 2, messageId], [12, 3, [[8, 1, reactionType]]]]]
+        paidReactionType = [
+            [11, 1, productId],
+            [11, 2, emojiId],
+            [8, 3, resourceType],
+            [10, 4, version],
         ]
-        sqrd = self.generateDummyProtocol("react", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        predefinedReactionType = [
+            [8, 1, reactionType],
+        ]
+        if productId is not None and emojiId is not None:
+            predefinedReactionType = [[12, 2, paidReactionType]]
+        params = [
+            [12, 1, [[8, 1, 0], [10, 2, messageId], [12, 3, predefinedReactionType]]]
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def createChat(self, name, targetUserMids, type=0, picturePath=None):
+    def createChat(
+        self,
+        name: str,
+        targetUserMids: List[str],
+        type: int = 0,
+        picturePath: Optional[str] = None,
+    ):
+        """Create chat."""
         METHOD_NAME = "createChat"
         params = [
-            [
-                12,
-                1,
-                [
-                    [8, 1, 0],
-                    [8, 2, type],
-                    [11, 3, name],
-                    [14, 4, [11, targetUserMids]],
-                    [11, 5, picturePath],
-                ],
-            ]
+            [8, 1, 0],
+            [8, 2, type],
+            [11, 3, name],
+            [14, 4, [11, targetUserMids]],
+            [11, 5, picturePath],
         ]
-        sqrd = self.generateDummyProtocol("createChat", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [[12, 1, params]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def updateRegion(self, region="TW"):
-        raise Exception("updateRegion is not implemented")
-        params = [[11, 4, region]]
-        sqrd = self.generateDummyProtocol("updateRegion", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        """
+        Update region.
 
-    def getChatExistence(self, ids):
+        DEPRECATED: Avoid using this method unless you are confident in your understanding of its effects.
+        """
+        METHOD_NAME = "updateRegion"
+        params = [[11, 4, region]]
+        return self.__sender.send(METHOD_NAME, params)
+
+    def getChatExistence(self, ids: List[str]):
+        """
+        Get chat existence.
+
+        DEPRECATED: This is a DevKit method.
+        """
         METHOD_NAME = "getChatExistence"
         params = [
-            [
-                12,
-                2,
-                [
-                    [14, 1, [11, ids]],
-                ],
-            ]
+            [14, 1, [11, ids]],
         ]
-        sqrd = self.generateDummyProtocol("getChatExistence", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [[12, 2, params]]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getChatMembership(self, chatIds):
+    def getChatMembership(self, chatIds: List[str]):
+        """
+        Get chat membership.
+
+        DEPRECATED: This is a DevKit method.
+        """
         METHOD_NAME = "getChatMembership"
-        params = [[12, 2, [[14, 1, [11, chatIds]]]]]
-        sqrd = self.generateDummyProtocol("getChatMembership", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [
+            [14, 1, [11, chatIds]],
+        ]
+        params = [[12, 2, params]]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def setChatHiddenStatus(self, chatId, bF=False):
-        raise Exception("setChatHiddenStatus is not implemented")
-        params = [[12, 1, [[11, 2, chatId]]]]
-        sqrd = self.generateDummyProtocol("setChatHiddenStatus", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+    def setChatHiddenStatus(self, chatId: str, lastMessageId: int, hidden: bool):
+        """Set chat hidden status."""
+        METHOD_NAME = "setChatHiddenStatus"
+        params = [
+            [11, 2, chatId],
+            [10, 3, lastMessageId],
+            [2, 4, hidden],
+        ]
+        params = [[12, 1, params]]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getReadMessageOps(self, chatId):
+    def getReadMessageOps(self, chatId: str):
+        """
+        Get read message ops.
+
+        DEPRECATED: Avoid using this method unless you are confident in your understanding of its effects.
+        """
         METHOD_NAME = "getReadMessageOps"
         params = [[11, 2, chatId]]
-        sqrd = self.generateDummyProtocol("getReadMessageOps", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getReadMessageOpsInBulk(self, chatIds):
+    def getReadMessageOpsInBulk(self, chatIds: List[str]):
+        """
+        Get read message ops in bulk.
+
+        DEPRECATED: Avoid using this method unless you are confident in your understanding of its effects.
+        """
         METHOD_NAME = "getReadMessageOpsInBulk"
         params = [[15, 2, [11, chatIds]]]
-        sqrd = self.generateDummyProtocol("getReadMessageOpsInBulk", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getE2EEMessageInfo(self, mid, msgid, receiverKeyId):
+    def getE2EEMessageInfo(self, mid: str, msgid: str, receiverKeyId: int):
+        """
+        Get E2EE message info.
+
+        DEPRECATED: This is a DevKit method.
+        """
         METHOD_NAME = "getE2EEMessageInfo"
         params = [
             [11, 2, mid],
             [11, 3, msgid],
             [8, 4, receiverKeyId],
         ]
-        sqrd = self.generateDummyProtocol("getE2EEMessageInfo", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getMessageBoxCompactWrapUpList(self):
         raise Exception("getMessageBoxCompactWrapUpList is not implemented")
+        METHOD_NAME = "getMessageBoxCompactWrapUpList"
         params = []
-        sqrd = self.generateDummyProtocol("getMessageBoxCompactWrapUpList", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getRecentMessages(self, to):
-        """old func? still return 0"""
+    def getRecentMessages(self, to: str):
+        """
+        Get recent messages.
+
+        DEPRECATED: Avoid using this method unless you are confident in your understanding of its effects.
+        """
         METHOD_NAME = "getRecentMessages"
         params = [[11, 2, to], [8, 3, 101]]
-        sqrd = self.generateDummyProtocol("getRecentMessages", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getRecentMessagesV2(self, to: str, count: int = 300):
+        """
+        Get recent messages v2.
+
+        DEPRECATED: Avoid using this method unless you are confident in your understanding of its effects.
+        """
         METHOD_NAME = "getRecentMessagesV2"
         params = [[11, 2, to], [8, 3, count]]
-        sqrd = self.generateDummyProtocol("getRecentMessagesV2", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getPreviousMessageIds(self, to, count=100):
+    def getPreviousMessageIds(self, to: str, count=100):
+        """
+        Get previous message ids.
+
+        DEPRECATED: This is a DevKit method.
+        """
         METHOD_NAME = "getPreviousMessageIds"
         params = [
-            [
-                12,
-                2,
-                [
-                    [11, 1, to],
-                    [8, 4, count],
-                ],
-            ]
+            [11, 1, to],
+            [8, 4, count],
         ]
-        sqrd = self.generateDummyProtocol("getPreviousMessageIds", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [[12, 2, params]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def getMessagesByIds(self, msgIds=[]):
+        """
+        Get messages by ids.
+
+        DEPRECATED: This is a DevKit method.
+        """
         # messagesByIdsRequests
         # - messagesByIdsRequest
         # {1: 1626172142246, 2: 14386851950042}
         raise Exception("getMessagesByIds is not implemented")
         params = [[15, 2, [12, []]]]
-        sqrd = self.generateDummyProtocol("getMessagesByIds", params, 3)
-        return self.postPackDataAndGetUnpackRespData("/S3", sqrd, 3)
+        sqrd = self.client.generateDummyProtocol("getMessagesByIds", params, 3)
+        return self.client.postPackDataAndGetUnpackRespData("/S3", sqrd, 3)
 
-    def getMessageBoxesByIds(self, mids=[]):
+    def getMessageBoxesByIds(self, mids: List[str]):
+        """
+        Get message boxes by ids.
+
+        DEPRECATED: Avoid using this method unless you are confident in your understanding of its effects.
+        """
         METHOD_NAME = "getMessageBoxesByIds"
         params = [[12, 2, [[15, 1, [11, mids]]]]]
-        sqrd = self.generateDummyProtocol("getMessageBoxesByIds", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getMessageBoxCompactWrapUpListV2(self, start=0, end=1):
+        """
+        Get message box compact wrap up list v2.
+
+        DEPRECATED: Avoid using this method unless you are confident in your understanding of its effects.
+        """
         METHOD_NAME = "getMessageBoxCompactWrapUpListV2"
         params = [[8, 2, start], [8, 3, end]]
-        sqrd = self.generateDummyProtocol("getMessageBoxCompactWrapUpListV2", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getPreviousMessagesV2(self, mid, time, id, count=3000):
+    def getPreviousMessagesV2(self, mid: str, time: int, id: int, count=3000):
+        """
+        Get previous messages v2.
+
+        DEPRECATED: Use 'getPreviousMessagesV2WithRequest' instead.
+        """
         METHOD_NAME = "getPreviousMessagesV2"
         params = [[11, 2, mid], [12, 3, [[10, 1, time], [10, 2, id]]], [8, 4, count]]
-        sqrd = self.generateDummyProtocol("getPreviousMessagesV2", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getPreviousMessagesV2WithReadCount(self, mid, time, id, count=101):
+    def getPreviousMessagesV2WithReadCount(
+        self, mid: str, time: int, id: int, count=101
+    ):
+        """
+        Get previous messages v2 with read count.
+
+        DEPRECATED: Use 'getPreviousMessagesV2WithRequest' instead.
+        """
         METHOD_NAME = "getPreviousMessagesV2WithReadCount"
         params = [[11, 2, mid], [12, 3, [[10, 1, time], [10, 2, id]]], [8, 4, count]]
-        sqrd = self.generateDummyProtocol(
-            "getPreviousMessagesV2WithReadCount", params, 4
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getNextMessagesV2(self, mid, time, id):
+    def getNextMessagesV2(self, mid: str, time: int, id: int):
+        """
+        Get next messages v2.
+
+        DEPRECATED: Avoid using this method unless you are confident in your understanding of its effects.
+        """
         METHOD_NAME = "getNextMessagesV2"
         params = [
             [11, 2, mid],
             [12, 3, [[10, 1, time], [10, 2, id]]],
             [8, 4, 101],  # count, 101 is max? maybe, hehe...
         ]
-        sqrd = self.generateDummyProtocol("getNextMessagesV2", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getAllRoomIds(self):
+        """
+        Get all room ids.
+
+        DEPRECATED: This is a DevKit method.
+        """
         METHOD_NAME = "getAllRoomIds"
         params = []
-        sqrd = self.generateDummyProtocol("getAllRoomIds", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getCompactRooms(self, roomIds):
+    def getCompactRooms(self, roomIds: List[str]):
+        """
+        Get compact rooms.
+
+        DEPRECATED: Avoid using this method unless you are confident in your understanding of its effects.
+        """
         METHOD_NAME = "getCompactRooms"
         params = [[15, 2, [11, roomIds]]]
-        sqrd = self.generateDummyProtocol("getCompactRooms", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def acquireCallTicket(self, to):
+    def acquireCallTicket(self, to: str):
+        """
+        Acquire call ticket.
+
+        DEPRECATED: Avoid using this method unless you are confident in your understanding of its effects.
+        """
         METHOD_NAME = "acquireCallTicket"
         params = [[11, 1, to]]
-        sqrd = self.generateDummyProtocol("acquireCallTicket", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def isAbusive(self):
-        """idk"""
+        """
+        Is abusive.
+
+        DEPRECATED: This is a DevKit method.
+        """
         METHOD_NAME = "isAbusive"
         # 2021/09/16 it removed...
         params = [
             [8, 1, 0],
             [8, 2, 1],  # reportSource
         ]
-        sqrd = self.generateDummyProtocol("isAbusive", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def removeBuddySubscriptionAndNotifyBuddyUnregistered(self, contactMids):
-        """OA only"""
+    def removeBuddySubscriptionAndNotifyBuddyUnregistered(self, contactMids: List[str]):
+        """
+        Remove buddy subscription and notify buddy unregistered.
+
+        OA only.
+
+        DEPRECATED: Avoid using this method unless you are confident in your understanding of its effects.
+        """
         METHOD_NAME = "removeBuddySubscriptionAndNotifyBuddyUnregistered"
         params = [[15, 1, [11, contactMids]]]
-        sqrd = self.generateDummyProtocol(
-            "removeBuddySubscriptionAndNotifyBuddyUnregistered", params, 4
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def makeUserAddMyselfAsContact(self, contactMids):
-        """OA only"""
+    def makeUserAddMyselfAsContact(self, contactMids: List[str]):
+        """
+        Make user add myself as contact.
+
+        OA only.
+
+        DEPRECATED: Avoid using this method unless you are confident in your understanding of its effects.
+        """
         METHOD_NAME = "makeUserAddMyselfAsContact"
         params = [[15, 1, [11, contactMids]]]
-        sqrd = self.generateDummyProtocol("makeUserAddMyselfAsContact", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getFollowers(self, mid=None, eMid=None, cursor=None):
+    def getFollowers(
+        self,
+        mid: Optional[str] = None,
+        eMid: Optional[str] = None,
+        cursor: Optional[str] = None,
+    ):
+        """Get followers."""
         METHOD_NAME = "getFollowers"
         data = [11, 1, mid]
         if eMid is not None:
             data = [11, 2, eMid]
         params = [[12, 2, [[12, 1, [data]], [11, 2, cursor]]]]
-        sqrd = self.generateDummyProtocol("getFollowers", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getFollowings(self, mid=None, eMid=None, cursor=None):
+    def getFollowings(
+        self,
+        mid: Optional[str] = None,
+        eMid: Optional[str] = None,
+        cursor: Optional[str] = None,
+    ):
+        """Get followings."""
         METHOD_NAME = "getFollowings"
         params = [[12, 2, [[12, 1, [[11, 1, mid], [11, 2, eMid]]], [11, 2, cursor]]]]
-        sqrd = self.generateDummyProtocol("getFollowings", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def removeFollower(self, mid=None, eMid=None):
+    def removeFollower(
+        self,
+        mid: Optional[str] = None,
+        eMid: Optional[str] = None,
+    ):
+        """Remove follower."""
         METHOD_NAME = "removeFollower"
         params = [[12, 2, [[12, 1, [[11, 1, mid], [11, 2, eMid]]]]]]
-        sqrd = self.generateDummyProtocol("removeFollower", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def follow(self, mid=None, eMid=None):
+    def follow(
+        self,
+        mid: Optional[str] = None,
+        eMid: Optional[str] = None,
+    ):
+        """Follow to traget's VOOM."""
         METHOD_NAME = "follow"
         params = [[12, 2, [[12, 1, [[11, 1, mid], [11, 2, eMid]]]]]]
-        sqrd = self.generateDummyProtocol("follow", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def unfollow(self, mid=None, eMid=None):
+    def unfollow(
+        self,
+        mid: Optional[str] = None,
+        eMid: Optional[str] = None,
+    ):
+        """Unfollow."""
         METHOD_NAME = "unfollow"
         params = [[12, 2, [[12, 1, [[11, 1, mid], [11, 2, eMid]]]]]]
-        sqrd = self.generateDummyProtocol("unfollow", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def bulkFollow(self, contactMids):
-        """disallow"""
+    def bulkFollow(
+        self, followTargetMids: List[str], unfollowTargetMids: List[str], hasNext: bool
+    ):
+        """Bulk follow."""
         METHOD_NAME = "bulkFollow"
-        params = [[12, 2, [[15, 2, [11, contactMids]]]]]
-        sqrd = self.generateDummyProtocol("bulkFollow", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [
+            [14, 1, [11, followTargetMids]],
+            [14, 2, [11, unfollowTargetMids]],
+            [2, 3, hasNext],
+        ]
+        params = [[12, 2, params]]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def decryptFollowEMid(self, eMid):
+    def decryptFollowEMid(self, eMid: str):
+        """Decrypt follow EMid"""
         METHOD_NAME = "decryptFollowEMid"
         params = [[11, 2, eMid]]
-        sqrd = self.generateDummyProtocol("decryptFollowEMid", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getMessageReadRange(self, chatIds):
+    def getMessageReadRange(self, chatIds: List[str], syncReason: int = 1):
+        """Get message read range."""
         METHOD_NAME = "getMessageReadRange"
-        params = [[15, 2, [11, chatIds]]]
-        sqrd = self.generateDummyProtocol("getMessageReadRange", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [[15, 2, [11, chatIds]], [8, 3, syncReason]]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getChatRoomBGMs(self, chatIds: list):
+    def getChatRoomBGMs(self, chatIds: List[str]):
+        """Get chat room BGM by chatIds."""
         METHOD_NAME = "getChatRoomBGMs"
         params = [[14, 2, [11, chatIds]]]
-        sqrd = self.generateDummyProtocol("getChatRoomBGMs", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def updateChatRoomBGM(self, chatId: str, chatRoomBGMInfo: str):
+        """Update chat room BGM."""
         METHOD_NAME = "updateChatRoomBGM"
         params = [
-            [8, 1, self.getCurrReqId()],
+            [8, 1, self.client.getCurrReqId()],
             [11, 2, chatId],
             [11, 3, chatRoomBGMInfo],
         ]
-        sqrd = self.generateDummyProtocol("updateChatRoomBGM", params, 4)
+        return self.__sender.send(METHOD_NAME, params)
 
-    def addSnsId(self, snsAccessToken):
+    def addSnsId(self, snsAccessToken: str):
+        """
+        Add sns id.
+
+        DEPRECATED: Avoid using this method unless you are confident in your understanding of its effects.
+        """
         METHOD_NAME = "addSnsId"
         params = [
             [8, 2, 1],  # FB?
             [11, 3, snsAccessToken],
         ]
-        sqrd = self.generateDummyProtocol("addSnsId", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def removeSnsId(self):
+        """
+        Remove sns id.
+
+        DEPRECATED: Avoid using this method unless you are confident in your understanding of its effects.
+        """
         METHOD_NAME = "removeSnsId"
         params = [
             [8, 2, 1],  # FB?
         ]
-        sqrd = self.generateDummyProtocol("removeSnsId", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getContactRegistration(self, mid, type=0):
+    def getContactRegistration(self, mid: str, type=0):
         METHOD_NAME = "getContactRegistration"
-        """ MID(0),
-            PHONE(1),
-            EMAIL(2),
-            USERID(3),
-            PROXIMITY(4),
-            GROUP(5),
-            USER(6),
-            QRCODE(7),
-            PROMOTION_BOT(8),
-            CONTACT_MESSAGE(9),
-            FRIEND_REQUEST(10),
-            REPAIR(128),
-            FACEBOOK(2305),
-            SINA(2306),
-            RENREN(2307),
-            FEIXIN(2308),
-            BBM(2309),
-            BEACON(11);
+        """
+        Get contact registration.
+
+        DEPRECATED: This is a DevKit method.
         """
         params = [
             [11, 1, mid],
             [8, 2, type],
         ]
-        sqrd = self.generateDummyProtocol("getContactRegistration", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getHiddenContactMids(self):
+        """
+        Get hidden contact mids.
+
+        DEPRECATED: Avoid using this method unless you are confident in your understanding of its effects.
+        """
         METHOD_NAME = "getHiddenContactMids"
         params = []
-        sqrd = self.generateDummyProtocol("getHiddenContactMids", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def blockRecommendation(self, mid):
+    def blockRecommendation(self, mid: str):
+        """Block recommendation."""
         METHOD_NAME = "blockRecommendation"
         params = [[11, 2, mid]]
-        sqrd = self.generateDummyProtocol("blockRecommendation", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def unblockRecommendation(self, mid):
+    def unblockRecommendation(self, mid: str):
+        """Unblock recommendation."""
         METHOD_NAME = "unblockRecommendation"
         params = [[11, 2, mid]]
-        sqrd = self.generateDummyProtocol("unblockRecommendation", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getRecommendationIds(self):
+        """Get recommendation ids."""
         METHOD_NAME = "getRecommendationIds"
         params = []
-        sqrd = self.generateDummyProtocol("getRecommendationIds", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
-
-    def getBlockedRecommendationIds(self):
-        METHOD_NAME = "getBlockedRecommendationIds"
-        params = []
-        sqrd = self.generateDummyProtocol("getBlockedRecommendationIds", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def sync(
         self,
         revision: int,
         count: int = 100,
-        fullSyncRequestReason: int = None,
-        lastPartialFullSyncs: dict = None,
+        fullSyncRequestReason: Optional[int] = None,
+        lastPartialFullSyncs: Optional[dict] = None,
     ):
         """
-        fetchOps for IOS.
+        sync Ops.
 
         - fullSyncRequestReason:
             OTHER(0),
@@ -2701,10 +2016,6 @@ class TalkService(BaseService):
         # LINE are u here?
         # OH, just work for IOS, but 2021/07/20 it works with ANDROID :)
         # 2022/04/20, sync() added to ANDROID apk
-        isDebugOnly = True
-        self.log(f"Using sync() for {self.DEVICE_TYPE}...", isDebugOnly)
-        self.log(f"globalRev: {self.globalRev}", isDebugOnly)
-        self.log(f"individualRev: {self.individualRev}", isDebugOnly)
         params = TalkServiceStruct.SyncRequest(
             revision,
             count,
@@ -2713,8 +2024,8 @@ class TalkService(BaseService):
             fullSyncRequestReason,
             lastPartialFullSyncs,
         )
-        sqrd = self.generateDummyProtocol("sync", params, 4)
-        res = self.postPackDataAndGetUnpackRespData(
+        sqrd = self.client.generateDummyProtocol("sync", params, 4)
+        res = self.client.postPackDataAndGetUnpackRespData(
             "/SYNC5",
             sqrd,
             5,
@@ -2725,7 +2036,7 @@ class TalkService(BaseService):
         sht, shd = self.talk_handler.SyncHandler(res)
         if sht == 1:
             return shd
-        elif sht == 2:
+        elif sht == 2 and isinstance(shd, int):
             return self.sync(shd, count)
         raise RuntimeError
 
@@ -2738,23 +2049,17 @@ class TalkService(BaseService):
             [10, 3, announcementId],
             [12, 4, [[8, 1, 5], [11, 2, text], [11, 3, messageLink], [11, 4, imgLink]]],
         ]
-        sqrd = self.generateDummyProtocol("updateChatRoomAnnouncement", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def reissueTrackingTicket(self):
         METHOD_NAME = "reissueTrackingTicket"
         params = []
-        sqrd = self.generateDummyProtocol("reissueTrackingTicket", params, 4)
+        return self.__sender.send(METHOD_NAME, params)
 
     def getExtendedProfile(self, syncReason=7):
         METHOD_NAME = "getExtendedProfile"
         params = [[8, 1, syncReason]]
-        sqrd = self.generateDummyProtocol("getExtendedProfile", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def updateExtendedProfileAttribute(
         self,
@@ -2772,7 +2077,7 @@ class TalkService(BaseService):
         """
         METHOD_NAME = "updateExtendedProfileAttribute"
         params = [
-            [8, 1, self.getCurrReqId()],
+            [8, 1, self.client.getCurrReqId()],
             [8, 2, 0],  # attr
             [
                 12,
@@ -2793,10 +2098,7 @@ class TalkService(BaseService):
                 ],
             ],
         ]
-        sqrd = self.generateDummyProtocol("updateExtendedProfileAttribute", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def setNotificationsEnabled(self, type: int, target: str, enablement: bool = True):
         """
@@ -2811,15 +2113,12 @@ class TalkService(BaseService):
         """
         METHOD_NAME = "setNotificationsEnabled"
         params = [
-            [8, 1, self.getCurrReqId()],
+            [8, 1, self.client.getCurrReqId()],
             [8, 2, type],  # attr
             [11, 3, target],
             [2, 4, enablement],
         ]
-        sqrd = self.generateDummyProtocol("setNotificationsEnabled", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def findAndAddContactsByPhone(
         self,
@@ -2827,17 +2126,14 @@ class TalkService(BaseService):
         reference: str = '{"screen":"groupMemberList","spec":"native"}',
     ):
         METHOD_NAME = "findAndAddContactsByPhone"
-        if type(phones) != list:
+        if isinstance(phones, list):
             raise Exception("[findAndAddContactsByPhone] phones must be a list")
         params = [
-            [8, 1, self.getCurrReqId()],
+            [8, 1, self.client.getCurrReqId()],
             [14, 2, [11, phones]],
             [11, 3, reference],
         ]
-        sqrd = self.generateDummyProtocol("findAndAddContactsByPhone", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def findAndAddContactsByUserid(
         self,
@@ -2846,14 +2142,11 @@ class TalkService(BaseService):
     ):
         METHOD_NAME = "findAndAddContactsByUserid"
         params = [
-            [8, 1, self.getCurrReqId()],
+            [8, 1, self.client.getCurrReqId()],
             [11, 2, searchId],
             [11, 3, reference],
         ]
-        sqrd = self.generateDummyProtocol("findAndAddContactsByUserid", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def syncContacts(self, phones: list = [], emails: list = [], userids: list = []):
         """
@@ -2865,11 +2158,11 @@ class TalkService(BaseService):
         ** NOTE: need turn on the 'allow_sync' setting.
         """
         METHOD_NAME = "syncContacts"
-        if type(phones) != list:
+        if isinstance(phones, list):
             raise Exception("[syncContacts] phones must be a list")
-        if type(emails) != list:
+        if isinstance(emails, list):
             raise Exception("[syncContacts] emails must be a list")
-        if type(userids) != list:
+        if isinstance(userids, list):
             raise Exception("[syncContacts] userids must be a list")
         localContacts = []
         luid = 0
@@ -2910,41 +2203,27 @@ class TalkService(BaseService):
             # [11, 15, phoneticName],
         ]
         params = [
-            [8, 1, self.getCurrReqId()],
+            [8, 1, self.client.getCurrReqId()],
             [15, 2, [12, localContacts]],
         ]
-        sqrd = self.generateDummyProtocol("syncContacts", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getContactWithFriendRequestStatus(self, mid: str):
         METHOD_NAME = "getContactWithFriendRequestStatus"
-        params = [[8, 1, self.getCurrReqId()], [11, 2, mid]]
-        sqrd = self.generateDummyProtocol(
-            "getContactWithFriendRequestStatus", params, 4
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [[8, 1, self.client.getCurrReqId()], [11, 2, mid]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def findContactsByPhone(self, phones: list):
         METHOD_NAME = "findContactsByPhone"
         if type(phones) != list:
             raise Exception("[findContactsByPhone] phones must be a list")
         params = [[14, 2, [11, phones]]]
-        sqrd = self.generateDummyProtocol("findContactsByPhone", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def findContactByUserid(self, searchId: str):
         METHOD_NAME = "findContactByUserid"
         params = [[11, 2, searchId]]
-        sqrd = self.generateDummyProtocol("findContactByUserid", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def findContactByMetaTag(
         self,
@@ -2953,10 +2232,7 @@ class TalkService(BaseService):
     ):
         METHOD_NAME = "findContactByMetaTag"
         params = [[11, 2, searchId], [11, 3, reference]]
-        sqrd = self.generateDummyProtocol("findContactByMetaTag", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def findAndAddContactByMetaTag(
         self,
@@ -2964,11 +2240,12 @@ class TalkService(BaseService):
         reference: str = '{"screen":"groupMemberList","spec":"native"}',
     ):
         METHOD_NAME = "findAndAddContactByMetaTag"
-        params = [[8, 1, self.getCurrReqId()], [11, 2, searchId], [11, 3, reference]]
-        sqrd = self.generateDummyProtocol("findAndAddContactByMetaTag", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        params = [
+            [8, 1, self.client.getCurrReqId()],
+            [11, 2, searchId],
+            [11, 3, reference],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
     def updateContactSetting(self, mid: str, flag: int, value: str):
         """
@@ -2981,66 +2258,49 @@ class TalkService(BaseService):
         """
         METHOD_NAME = "updateContactSetting"
         params = [
-            [8, 1, self.getCurrReqId()],
+            [8, 1, self.client.getCurrReqId()],
             [11, 2, mid],
             [8, 3, flag],
             [11, 4, value],
         ]
-        sqrd = self.generateDummyProtocol("updateContactSetting", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getFavoriteMids(self):
         METHOD_NAME = "getFavoriteMids"
         params = []
-        sqrd = self.generateDummyProtocol("getFavoriteMids", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def sendMessageAwaitCommit(self):
         METHOD_NAME = "sendMessageAwaitCommit"
         params = []
-        sqrd = self.generateDummyProtocol("sendMessageAwaitCommit", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def findContactByUserTicket(self, ticketIdWithTag: str):
         METHOD_NAME = "findContactByUserTicket"
         params = [[11, 2, ticketIdWithTag]]
-        sqrd = self.generateDummyProtocol("findContactByUserTicket", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def invalidateUserTicket(self):
         METHOD_NAME = "invalidateUserTicket"
         params = []
-        sqrd = self.generateDummyProtocol("invalidateUserTicket", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def unregisterUserAndDevice(self):
         METHOD_NAME = "unregisterUserAndDevice"
         params = []
-        sqrd = self.generateDummyProtocol("unregisterUserAndDevice", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT, sqrd, readWith=f"TalkService.{METHOD_NAME}"
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def verifyQrcode(self, verifier, pinCode):
+    def verifyQrcode(self, verifier: str, pinCode: str):
         METHOD_NAME = "verifyQrcode"
         params = [
             [11, 2, verifier],
             [11, 3, pinCode],
         ]
-        sqrd = self.generateDummyProtocol("verifyQrcode", params, 4)
-        return self.postPackDataAndGetUnpackRespData("/S4", sqrd, 4)
+        return self.__sender.send(METHOD_NAME, params)
 
-    def reportAbuseEx(self, message: list = None, lineMeeting: list = None):
+    def reportAbuseEx(
+        self, message: Optional[list] = None, lineMeeting: Optional[list] = None
+    ):
         """
         - reportSource
             UNKNOWN(0),
@@ -3082,8 +2342,7 @@ class TalkService(BaseService):
                 ],
             ],
         ]
-        sqrd = self.generateDummyProtocol("reportAbuseEx", params, 4)
-        return self.postPackDataAndGetUnpackRespData("/S4", sqrd, 4)
+        return self.__sender.send(METHOD_NAME, params)
 
     def reportAbuseExWithMessage(
         self,
@@ -3158,13 +2417,7 @@ class TalkService(BaseService):
     def getCountryWithRequestIp(self):
         METHOD_NAME = "getCountryWithRequestIp"
         params = []
-        sqrd = self.generateDummyProtocol("getCountryWithRequestIp", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NORMAL_ENDPOINT,
-            sqrd,
-            5,
-            readWith="TalkService.getCountryWithRequestIp_result",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def notifyBuddyOnAir(self):
         """
@@ -3172,14 +2425,13 @@ class TalkService(BaseService):
         """
         raise Exception("notifyBuddyOnAir is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "notifyBuddyOnAir", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def getSuggestRevisions(self):
@@ -3188,14 +2440,13 @@ class TalkService(BaseService):
         """
         raise Exception("getSuggestRevisions is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "getSuggestRevisions", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def updateProfileAttributes(
@@ -3211,31 +2462,15 @@ class TalkService(BaseService):
             [13, 1, [8, 12, {profileAttribute: ProfileContent}]]
         ]
         params = [
-            [8, 1, self.getCurrReqId()],
+            [8, 1, self.client.getCurrReqId()],
             [12, 2, UpdateProfileAttributesRequest],
         ]
-        sqrd = self.generateDummyProtocol(
-            "updateProfileAttributes", params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def updateNotificationToken(self, token: str, type: int = 21):
         METHOD_NAME = "updateNotificationToken"
         params = [[11, 2, token], [8, 3, type]]  # generated by google api
-        sqrd = self.generateDummyProtocol(
-            "updateNotificationToken", params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def disableNearby(self):
         """
@@ -3243,14 +2478,13 @@ class TalkService(BaseService):
         """
         raise Exception("disableNearby is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "disableNearby", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def createRoom(self):
@@ -3259,14 +2493,13 @@ class TalkService(BaseService):
         """
         raise Exception("createRoom is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "createRoom", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def tryFriendRequest(self):
@@ -3275,41 +2508,24 @@ class TalkService(BaseService):
         """
         raise Exception("tryFriendRequest is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "tryFriendRequest", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def generateUserTicket(self, expirationTime: int, maxUseCount: int):
         METHOD_NAME = "generateUserTicket"
         params = [[10, 3, expirationTime], [8, 4, maxUseCount]]
-        sqrd = self.generateDummyProtocol(
-            "generateUserTicket", params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getRecentFriendRequests(self):
         METHOD_NAME = "getRecentFriendRequests"
         params = []
-        sqrd = self.generateDummyProtocol(
-            "getRecentFriendRequests", params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def updateSettingsAttribute(self):
         """
@@ -3317,14 +2533,13 @@ class TalkService(BaseService):
         """
         raise Exception("updateSettingsAttribute is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "updateSettingsAttribute", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def resendPinCode(self):
@@ -3333,14 +2548,13 @@ class TalkService(BaseService):
         """
         raise Exception("resendPinCode is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "resendPinCode", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def notifyRegistrationComplete(
@@ -3353,15 +2567,7 @@ class TalkService(BaseService):
             [11, 2, udidHash],  # len 32 hash
             [11, 3, applicationTypeWithExtensions],
         ]
-        sqrd = self.generateDummyProtocol(
-            "notifyRegistrationComplete", params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def createGroupV2(self):
         """
@@ -3369,14 +2575,13 @@ class TalkService(BaseService):
         """
         raise Exception("createGroupV2 is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "createGroupV2", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def reportSpam(self):
@@ -3385,14 +2590,13 @@ class TalkService(BaseService):
         """
         raise Exception("reportSpam is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "reportSpam", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def requestResendMessage(self):
@@ -3401,14 +2605,13 @@ class TalkService(BaseService):
         """
         raise Exception("requestResendMessage is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "requestResendMessage", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def inviteFriendsBySms(self):
@@ -3417,14 +2620,13 @@ class TalkService(BaseService):
         """
         raise Exception("inviteFriendsBySms is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "inviteFriendsBySms", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def findGroupByTicketV2(self):
@@ -3433,14 +2635,13 @@ class TalkService(BaseService):
         """
         raise Exception("findGroupByTicketV2 is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "findGroupByTicketV2", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def getInstantNews(self):
@@ -3449,28 +2650,19 @@ class TalkService(BaseService):
         """
         raise Exception("getInstantNews is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "getInstantNews", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def createQrcodeBase64Image(self, url: str):
         METHOD_NAME = "createQrcodeBase64Image"
         params = [[11, 2, url]]
-        sqrd = self.generateDummyProtocol(
-            "createQrcodeBase64Image", params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def findSnsIdUserStatus(self):
         """
@@ -3478,14 +2670,13 @@ class TalkService(BaseService):
         """
         raise Exception("findSnsIdUserStatus is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "findSnsIdUserStatus", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def getPendingAgreements(self):
@@ -3494,14 +2685,13 @@ class TalkService(BaseService):
         """
         raise Exception("getPendingAgreements is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "getPendingAgreements", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def verifyIdentityCredentialWithResult(self):
@@ -3510,14 +2700,13 @@ class TalkService(BaseService):
         """
         raise Exception("verifyIdentityCredentialWithResult is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "verifyIdentityCredentialWithResult", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def registerWithSnsId(self):
@@ -3526,14 +2715,13 @@ class TalkService(BaseService):
         """
         raise Exception("registerWithSnsId is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "registerWithSnsId", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def verifyAccountMigration(self):
@@ -3542,14 +2730,13 @@ class TalkService(BaseService):
         """
         raise Exception("verifyAccountMigration is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "verifyAccountMigration", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def getEncryptedIdentityV3(self):
@@ -3558,14 +2745,13 @@ class TalkService(BaseService):
         """
         raise Exception("getEncryptedIdentityV3 is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "getEncryptedIdentityV3", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def reissueGroupTicket(self):
@@ -3574,14 +2760,13 @@ class TalkService(BaseService):
         """
         raise Exception("reissueGroupTicket is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "reissueGroupTicket", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def getUserTicket(self):
@@ -3590,14 +2775,13 @@ class TalkService(BaseService):
         """
         raise Exception("getUserTicket is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "getUserTicket", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def changeVerificationMethod(self):
@@ -3606,14 +2790,13 @@ class TalkService(BaseService):
         """
         raise Exception("changeVerificationMethod is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "changeVerificationMethod", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def getRooms(self):
@@ -3622,12 +2805,13 @@ class TalkService(BaseService):
         """
         raise Exception("getRooms is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol("getRooms", params, self.TalkService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(
+        sqrd = self.client.generateDummyProtocol(
+            "getRooms", params, self.TalkService_REQ_TYPE
+        )
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def getAcceptedProximityMatches(self):
@@ -3636,14 +2820,13 @@ class TalkService(BaseService):
         """
         raise Exception("getAcceptedProximityMatches is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "getAcceptedProximityMatches", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def getChatEffectMetaList(self):
@@ -3652,14 +2835,13 @@ class TalkService(BaseService):
         """
         raise Exception("getChatEffectMetaList is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "getChatEffectMetaList", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def notifyInstalled(self):
@@ -3668,14 +2850,13 @@ class TalkService(BaseService):
         """
         raise Exception("notifyInstalled is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "notifyInstalled", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def reissueUserTicket(self):
@@ -3684,14 +2865,13 @@ class TalkService(BaseService):
         """
         raise Exception("reissueUserTicket is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "reissueUserTicket", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def sendDummyPush(self):
@@ -3700,14 +2880,13 @@ class TalkService(BaseService):
         """
         raise Exception("sendDummyPush is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "sendDummyPush", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def verifyAccountMigrationPincode(self):
@@ -3716,14 +2895,13 @@ class TalkService(BaseService):
         """
         raise Exception("verifyAccountMigrationPincode is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "verifyAccountMigrationPincode", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def registerDeviceWithoutPhoneNumberWithIdentityCredential(self):
@@ -3734,16 +2912,15 @@ class TalkService(BaseService):
             "registerDeviceWithoutPhoneNumberWithIdentityCredential is not implemented"
         )
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "registerDeviceWithoutPhoneNumberWithIdentityCredential",
             params,
             self.TalkService_REQ_TYPE,
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def registerDeviceWithoutPhoneNumber(self):
@@ -3752,14 +2929,13 @@ class TalkService(BaseService):
         """
         raise Exception("registerDeviceWithoutPhoneNumber is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "registerDeviceWithoutPhoneNumber", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def inviteIntoGroup(self):
@@ -3768,28 +2944,19 @@ class TalkService(BaseService):
         """
         raise Exception("inviteIntoGroup is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "inviteIntoGroup", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def removeAllMessages(self, lastMessageId: str):
         METHOD_NAME = "removeAllMessages"
-        params = [[8, 1, self.getCurrReqId()], [11, 1, lastMessageId]]
-        sqrd = self.generateDummyProtocol(
-            "removeAllMessages", params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        params = [[8, 1, self.client.getCurrReqId()], [11, 1, lastMessageId]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def registerWithPhoneNumber(self):
         """
@@ -3797,14 +2964,13 @@ class TalkService(BaseService):
         """
         raise Exception("registerWithPhoneNumber is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "registerWithPhoneNumber", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def getRingbackTone(self):
@@ -3813,14 +2979,13 @@ class TalkService(BaseService):
         """
         raise Exception("getRingbackTone is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "getRingbackTone", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def reportSpammer(self):
@@ -3829,14 +2994,13 @@ class TalkService(BaseService):
         """
         raise Exception("reportSpammer is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "reportSpammer", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def loginWithVerifierForCerificate(self):
@@ -3845,14 +3009,13 @@ class TalkService(BaseService):
         """
         raise Exception("loginWithVerifierForCerificate is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "loginWithVerifierForCerificate", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def logoutSession(self):
@@ -3861,14 +3024,13 @@ class TalkService(BaseService):
         """
         raise Exception("logoutSession is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "logoutSession", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def clearIdentityCredential(self):
@@ -3877,14 +3039,13 @@ class TalkService(BaseService):
         """
         raise Exception("clearIdentityCredential is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "clearIdentityCredential", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def updateGroupPreferenceAttribute(self):
@@ -3893,14 +3054,13 @@ class TalkService(BaseService):
         """
         raise Exception("updateGroupPreferenceAttribute is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "updateGroupPreferenceAttribute", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def closeProximityMatch(self):
@@ -3909,14 +3069,13 @@ class TalkService(BaseService):
         """
         raise Exception("closeProximityMatch is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "closeProximityMatch", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def loginWithVerifierForCertificate(self):
@@ -3925,14 +3084,13 @@ class TalkService(BaseService):
         """
         raise Exception("loginWithVerifierForCertificate is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "loginWithVerifierForCertificate", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def respondResendMessage(self):
@@ -3941,14 +3099,13 @@ class TalkService(BaseService):
         """
         raise Exception("respondResendMessage is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "respondResendMessage", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def getProximityMatchCandidateList(self):
@@ -3957,14 +3114,13 @@ class TalkService(BaseService):
         """
         raise Exception("getProximityMatchCandidateList is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "getProximityMatchCandidateList", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def reportDeviceState(self):
@@ -3973,33 +3129,24 @@ class TalkService(BaseService):
         """
         raise Exception("reportDeviceState is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "reportDeviceState", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def sendChatRemoved(self, chatMid: str, lastMessageId: str):
         METHOD_NAME = "sendChatRemoved"
         params = [
-            [8, 1, self.getCurrReqId()],
+            [8, 1, self.client.getCurrReqId()],
             [11, 2, chatMid],
             [11, 3, lastMessageId],
             # [3, 4, sessionId]
         ]
-        sqrd = self.generateDummyProtocol(
-            "sendChatRemoved", params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getAuthQrcode(self):
         """
@@ -4007,14 +3154,13 @@ class TalkService(BaseService):
         """
         raise Exception("getAuthQrcode is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "getAuthQrcode", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def updateAccountMigrationPincode(self):
@@ -4023,14 +3169,13 @@ class TalkService(BaseService):
         """
         raise Exception("updateAccountMigrationPincode is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "updateAccountMigrationPincode", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def registerWithSnsIdAndIdentityCredential(self):
@@ -4039,14 +3184,13 @@ class TalkService(BaseService):
         """
         raise Exception("registerWithSnsIdAndIdentityCredential is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "registerWithSnsIdAndIdentityCredential", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def startUpdateVerification(self):
@@ -4055,14 +3199,13 @@ class TalkService(BaseService):
         """
         raise Exception("startUpdateVerification is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "startUpdateVerification", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def notifySleep(self):
@@ -4071,14 +3214,13 @@ class TalkService(BaseService):
         """
         raise Exception("notifySleep is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "notifySleep", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def reportContacts(self):
@@ -4087,14 +3229,13 @@ class TalkService(BaseService):
         """
         raise Exception("reportContacts is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "reportContacts", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def acceptGroupInvitation(self):
@@ -4103,14 +3244,13 @@ class TalkService(BaseService):
         """
         raise Exception("acceptGroupInvitation is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "acceptGroupInvitation", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def loginWithVerifier(self):
@@ -4119,14 +3259,13 @@ class TalkService(BaseService):
         """
         raise Exception("loginWithVerifier is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "loginWithVerifier", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def updateSettingsAttributes(self):
@@ -4135,14 +3274,13 @@ class TalkService(BaseService):
         """
         raise Exception("updateSettingsAttributes is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "updateSettingsAttributes", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def verifyPhoneNumberForLogin(self):
@@ -4151,14 +3289,13 @@ class TalkService(BaseService):
         """
         raise Exception("verifyPhoneNumberForLogin is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "verifyPhoneNumberForLogin", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def getUpdatedMessageBoxIds(self):
@@ -4167,14 +3304,13 @@ class TalkService(BaseService):
         """
         raise Exception("getUpdatedMessageBoxIds is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "getUpdatedMessageBoxIds", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def inviteIntoRoom(self):
@@ -4183,14 +3319,13 @@ class TalkService(BaseService):
         """
         raise Exception("inviteIntoRoom is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "inviteIntoRoom", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def removeFriendRequest(self):
@@ -4199,14 +3334,13 @@ class TalkService(BaseService):
         """
         raise Exception("removeFriendRequest is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "removeFriendRequest", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def acceptGroupInvitationByTicket(self):
@@ -4215,14 +3349,13 @@ class TalkService(BaseService):
         """
         raise Exception("acceptGroupInvitationByTicket is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "acceptGroupInvitationByTicket", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def reportProfile(self):
@@ -4231,14 +3364,13 @@ class TalkService(BaseService):
         """
         raise Exception("reportProfile is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "reportProfile", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def updateProfile(self):
@@ -4247,14 +3379,13 @@ class TalkService(BaseService):
         """
         raise Exception("updateProfile is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "updateProfile", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def createGroup(self):
@@ -4263,14 +3394,13 @@ class TalkService(BaseService):
         """
         raise Exception("createGroup is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "createGroup", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def resendEmailConfirmation(self):
@@ -4279,14 +3409,13 @@ class TalkService(BaseService):
         """
         raise Exception("resendEmailConfirmation is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "resendEmailConfirmation", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def registerWithPhoneNumberAndPassword(self):
@@ -4295,14 +3424,13 @@ class TalkService(BaseService):
         """
         raise Exception("registerWithPhoneNumberAndPassword is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "registerWithPhoneNumberAndPassword", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def openProximityMatch(self):
@@ -4311,14 +3439,13 @@ class TalkService(BaseService):
         """
         raise Exception("openProximityMatch is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "openProximityMatch", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def verifyPhone(self):
@@ -4327,14 +3454,13 @@ class TalkService(BaseService):
         """
         raise Exception("verifyPhone is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "verifyPhone", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def getSessions(self):
@@ -4343,14 +3469,13 @@ class TalkService(BaseService):
         """
         raise Exception("getSessions is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "getSessions", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def clearRingbackTone(self):
@@ -4359,14 +3484,13 @@ class TalkService(BaseService):
         """
         raise Exception("clearRingbackTone is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "clearRingbackTone", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def leaveGroup(self):
@@ -4375,14 +3499,13 @@ class TalkService(BaseService):
         """
         raise Exception("leaveGroup is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "leaveGroup", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def getProximityMatchCandidates(self):
@@ -4391,14 +3514,13 @@ class TalkService(BaseService):
         """
         raise Exception("getProximityMatchCandidates is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "getProximityMatchCandidates", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def createAccountMigrationPincodeSession(self):
@@ -4407,14 +3529,13 @@ class TalkService(BaseService):
         """
         raise Exception("createAccountMigrationPincodeSession is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "createAccountMigrationPincodeSession", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def getRoom(self):
@@ -4423,12 +3544,13 @@ class TalkService(BaseService):
         """
         raise Exception("getRoom is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol("getRoom", params, self.TalkService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(
+        sqrd = self.client.generateDummyProtocol(
+            "getRoom", params, self.TalkService_REQ_TYPE
+        )
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def startVerification(self):
@@ -4437,14 +3559,13 @@ class TalkService(BaseService):
         """
         raise Exception("startVerification is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "startVerification", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def logout(self):
@@ -4453,12 +3574,13 @@ class TalkService(BaseService):
         """
         raise Exception("logout is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol("logout", params, self.TalkService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(
+        sqrd = self.client.generateDummyProtocol(
+            "logout", params, self.TalkService_REQ_TYPE
+        )
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def updateNotificationTokenWithBytes(self, bData: bytes, bindType: int = 1):
@@ -4468,15 +3590,7 @@ class TalkService(BaseService):
         """
         METHOD_NAME = "updateNotificationTokenWithBytes"
         params = [[11, 2, bData], [8, 3, bindType]]
-        sqrd = self.generateDummyProtocol(
-            "updateNotificationTokenWithBytes", params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def confirmEmail(self):
         """
@@ -4484,14 +3598,13 @@ class TalkService(BaseService):
         """
         raise Exception("confirmEmail is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "confirmEmail", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def getIdentityIdentifier(self):
@@ -4500,14 +3613,13 @@ class TalkService(BaseService):
         """
         raise Exception("getIdentityIdentifier is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "getIdentityIdentifier", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def updateDeviceInfo(self):
@@ -4516,14 +3628,13 @@ class TalkService(BaseService):
         """
         raise Exception("updateDeviceInfo is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "updateDeviceInfo", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def registerDeviceWithIdentityCredential(self):
@@ -4532,28 +3643,19 @@ class TalkService(BaseService):
         """
         raise Exception("registerDeviceWithIdentityCredential is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "registerDeviceWithIdentityCredential", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def wakeUpLongPolling(self, clientRevision: int):
         METHOD_NAME = "wakeUpLongPolling"
         params = [[10, 2, clientRevision]]
-        sqrd = self.generateDummyProtocol(
-            "wakeUpLongPolling", params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def updateAndGetNearby(self):
         """
@@ -4561,14 +3663,13 @@ class TalkService(BaseService):
         """
         raise Exception("updateAndGetNearby is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "updateAndGetNearby", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def getSettingsAttributes(self):
@@ -4577,14 +3678,13 @@ class TalkService(BaseService):
         """
         raise Exception("getSettingsAttributes is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "getSettingsAttributes", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def rejectGroupInvitation(self):
@@ -4593,14 +3693,13 @@ class TalkService(BaseService):
         """
         raise Exception("rejectGroupInvitation is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "rejectGroupInvitation", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def loginWithIdentityCredentialForCertificate(self):
@@ -4609,16 +3708,15 @@ class TalkService(BaseService):
         """
         raise Exception("loginWithIdentityCredentialForCertificate is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "loginWithIdentityCredentialForCertificate",
             params,
             self.TalkService_REQ_TYPE,
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def reportSettings(self):
@@ -4627,14 +3725,13 @@ class TalkService(BaseService):
         """
         raise Exception("reportSettings is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "reportSettings", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def registerWithExistingSnsIdAndIdentityCredential(self):
@@ -4645,16 +3742,15 @@ class TalkService(BaseService):
             "registerWithExistingSnsIdAndIdentityCredential is not implemented"
         )
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "registerWithExistingSnsIdAndIdentityCredential",
             params,
             self.TalkService_REQ_TYPE,
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def requestAccountPasswordReset(self):
@@ -4663,14 +3759,13 @@ class TalkService(BaseService):
         """
         raise Exception("requestAccountPasswordReset is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "requestAccountPasswordReset", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def requestEmailConfirmation(self):
@@ -4679,14 +3774,13 @@ class TalkService(BaseService):
         """
         raise Exception("requestEmailConfirmation is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "requestEmailConfirmation", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def resendPinCodeBySMS(self):
@@ -4695,14 +3789,13 @@ class TalkService(BaseService):
         """
         raise Exception("resendPinCodeBySMS is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "resendPinCodeBySMS", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def getSuggestIncrements(self):
@@ -4711,26 +3804,19 @@ class TalkService(BaseService):
         """
         raise Exception("getSuggestIncrements is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "getSuggestIncrements", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def noop(self):
         METHOD_NAME = "noop"
         params = []
-        sqrd = self.generateDummyProtocol("noop", params, self.TalkService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getSuggestSettings(self):
         """
@@ -4738,14 +3824,13 @@ class TalkService(BaseService):
         """
         raise Exception("getSuggestSettings is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "getSuggestSettings", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def acceptProximityMatches(self):
@@ -4754,14 +3839,13 @@ class TalkService(BaseService):
         """
         raise Exception("acceptProximityMatches is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "acceptProximityMatches", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def kickoutFromGroup(self):
@@ -4770,14 +3854,13 @@ class TalkService(BaseService):
         """
         raise Exception("kickoutFromGroup is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "kickoutFromGroup", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def verifyIdentityCredential(self):
@@ -4786,14 +3869,13 @@ class TalkService(BaseService):
         """
         raise Exception("verifyIdentityCredential is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "verifyIdentityCredential", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def loginWithIdentityCredential(self):
@@ -4802,14 +3884,13 @@ class TalkService(BaseService):
         """
         raise Exception("loginWithIdentityCredential is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "loginWithIdentityCredential", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def setIdentityCredential(self):
@@ -4818,14 +3899,13 @@ class TalkService(BaseService):
         """
         raise Exception("setIdentityCredential is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "setIdentityCredential", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def getBuddyLocation(self):
@@ -4834,14 +3914,13 @@ class TalkService(BaseService):
         """
         raise Exception("getBuddyLocation is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "getBuddyLocation", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def verifyPhoneNumber(self):
@@ -4850,14 +3929,13 @@ class TalkService(BaseService):
         """
         raise Exception("verifyPhoneNumber is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "verifyPhoneNumber", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def registerDevice(self):
@@ -4866,28 +3944,19 @@ class TalkService(BaseService):
         """
         raise Exception("registerDevice is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "registerDevice", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def getRingtone(self):
         METHOD_NAME = "getRingtone"
         params = []
-        sqrd = self.generateDummyProtocol(
-            "getRingtone", params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def findGroupByTicket(self):
         """
@@ -4895,14 +3964,13 @@ class TalkService(BaseService):
         """
         raise Exception("findGroupByTicket is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "findGroupByTicket", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def reportClientStatistics(self):
@@ -4911,14 +3979,13 @@ class TalkService(BaseService):
         """
         raise Exception("reportClientStatistics is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "reportClientStatistics", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def updateGroup(self):
@@ -4927,28 +3994,19 @@ class TalkService(BaseService):
         """
         raise Exception("updateGroup is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "updateGroup", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def getEncryptedIdentityV2(self):
         METHOD_NAME = "getEncryptedIdentityV2"
         params = []
-        sqrd = self.generateDummyProtocol(
-            "getEncryptedIdentityV2", params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def reportAbuse(self):
         """
@@ -4956,28 +4014,19 @@ class TalkService(BaseService):
         """
         raise Exception("reportAbuse is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "reportAbuse", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def getAnalyticsInfo(self):
         METHOD_NAME = "getAnalyticsInfo"
         params = []
-        sqrd = self.generateDummyProtocol(
-            "getAnalyticsInfo", params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getCompactGroups(self):
         """
@@ -4985,14 +4034,13 @@ class TalkService(BaseService):
         """
         raise Exception("getCompactGroups is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "getCompactGroups", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def setBuddyLocation(self):
@@ -5001,28 +4049,19 @@ class TalkService(BaseService):
         """
         raise Exception("setBuddyLocation is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "setBuddyLocation", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def isUseridAvailable(self, searchId: str):
         METHOD_NAME = "isUseridAvailable"
         params = [[11, 2, searchId]]
-        sqrd = self.generateDummyProtocol(
-            "isUseridAvailable", params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def removeBuddyLocation(self):
         """
@@ -5030,14 +4069,13 @@ class TalkService(BaseService):
         """
         raise Exception("removeBuddyLocation is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "removeBuddyLocation", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def report(self, syncOpRevision: int, category: int, report: str):
@@ -5060,39 +4098,17 @@ class TalkService(BaseService):
             [8, 3, category],
             [11, 4, report],
         ]
-        sqrd = self.generateDummyProtocol("report", params, self.TalkService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def registerUserid(self, searchId: str):
         METHOD_NAME = "registerUserid"
-        params = [[8, 1, self.getCurrReqId()], [11, 2, searchId]]
-        sqrd = self.generateDummyProtocol(
-            "registerUserid", params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        params = [[8, 1, self.client.getCurrReqId()], [11, 2, searchId]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def finishUpdateVerification(self, sessionId: str):
         METHOD_NAME = "finishUpdateVerification"
         params = [[11, 2, sessionId]]
-        sqrd = self.generateDummyProtocol(
-            "finishUpdateVerification", params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def notifySleepV2(self, revision: int):
         """
@@ -5116,13 +4132,7 @@ class TalkService(BaseService):
                 ],
             ]
         ]
-        sqrd = self.generateDummyProtocol("notifySleepV2", params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_NOTIFY_SLEEP_ENDPOINT,
-            sqrd,
-            4,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getCompactRoom(self):
         """
@@ -5130,14 +4140,13 @@ class TalkService(BaseService):
         """
         raise Exception("getCompactRoom is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "getCompactRoom", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def cancelGroupInvitation(self):
@@ -5146,28 +4155,19 @@ class TalkService(BaseService):
         """
         raise Exception("cancelGroupInvitation is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "cancelGroupInvitation", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def clearRingtone(self, oid: str):
         METHOD_NAME = "clearRingtone"
         params = [[11, 1, oid]]
-        sqrd = self.generateDummyProtocol(
-            "clearRingtone", params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def notifyUpdated(
         self,
@@ -5203,15 +4203,7 @@ class TalkService(BaseService):
             [11, 4, udidHash],  # 57f44905fd117a5661828440bb7d1bd5
             [11, 4, oldUdidHash],  # 5284047f4ffb4e04824a2fd1d1f0cd62
         ]
-        sqrd = self.generateDummyProtocol(
-            "notifyUpdated", params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getGroupWithoutMembers(self):
         """
@@ -5219,14 +4211,13 @@ class TalkService(BaseService):
         """
         raise Exception("getGroupWithoutMembers is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "getGroupWithoutMembers", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def getShakeEventV1(self):
@@ -5235,14 +4226,13 @@ class TalkService(BaseService):
         """
         raise Exception("getShakeEventV1 is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "getShakeEventV1", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
     def reportPushRecvReports(
@@ -5269,17 +4259,11 @@ class TalkService(BaseService):
             ]
         )
         params = [[8, 1, 0], [15, 2, [12, pushRecvReports]]]
-        sqrd = self.generateDummyProtocol(
-            "reportPushRecvReports", params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getFriendRequests(self, direction: int = 1, lastSeenSeqId: int = None):
+    def getFriendRequests(
+        self, direction: int = 1, lastSeenSeqId: Optional[int] = None
+    ):
         """
         -  direction:
             INCOMING(1),
@@ -5287,15 +4271,7 @@ class TalkService(BaseService):
         """
         METHOD_NAME = "getFriendRequests"
         params = [[8, 1, direction], [10, 2, lastSeenSeqId]]
-        sqrd = self.generateDummyProtocol(
-            "getFriendRequests", params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def requestIdentityUnbind(self):
         """
@@ -5303,17 +4279,18 @@ class TalkService(BaseService):
         """
         raise Exception("requestIdentityUnbind is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             "requestIdentityUnbind", params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH,
             sqrd,
             self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
         )
 
-    def addToFollowBlacklist(self, mid: str = None, eMid: str = None):
+    def addToFollowBlacklist(
+        self, mid: Optional[str] = None, eMid: Optional[str] = None
+    ):
         METHOD_NAME = "addToFollowBlacklist"
         params = [
             [
@@ -5331,17 +4308,11 @@ class TalkService(BaseService):
                 ],
             ]
         ]
-        sqrd = self.generateDummyProtocol(
-            "addToFollowBlacklist", params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def removeFromFollowBlacklist(self, mid: str = None, eMid: str = None):
+    def removeFromFollowBlacklist(
+        self, mid: Optional[str] = None, eMid: Optional[str] = None
+    ):
         METHOD_NAME = "removeFromFollowBlacklist"
         params = [
             [
@@ -5359,41 +4330,17 @@ class TalkService(BaseService):
                 ],
             ]
         ]
-        sqrd = self.generateDummyProtocol(
-            "removeFromFollowBlacklist", params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getFollowBlacklist(self, cursor: str = None):
+    def getFollowBlacklist(self, cursor: Optional[str] = None):
         METHOD_NAME = "getFollowBlacklist"
         params = [[12, 2, [[11, 1, cursor]]]]
-        sqrd = self.generateDummyProtocol(
-            "getFollowBlacklist", params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"TalkService.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def determineMediaMessageFlow(self, chatMid: str):
         METHOD_NAME = "determineMediaMessageFlow"
         params = TalkServiceStruct.DetermineMediaMessageFlowRequest(chatMid)
-        sqrd = self.generateDummyProtocol(
-            METHOD_NAME, params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"{__class__.__name__}.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getPublicKeychain(self):
         """
@@ -5405,10 +4352,10 @@ class TalkService(BaseService):
         raise Exception("getPublicKeychain is not implemented")
         METHOD_NAME = "getPublicKeychain"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5422,10 +4369,10 @@ class TalkService(BaseService):
         raise Exception("sendMessageReceipt is not implemented")
         METHOD_NAME = "sendMessageReceipt"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5439,10 +4386,10 @@ class TalkService(BaseService):
         raise Exception("commitSendMessages is not implemented")
         METHOD_NAME = "commitSendMessages"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5456,10 +4403,10 @@ class TalkService(BaseService):
         raise Exception("getNotificationPolicy is not implemented")
         METHOD_NAME = "getNotificationPolicy"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5473,10 +4420,10 @@ class TalkService(BaseService):
         raise Exception("sendMessageToMyHome is not implemented")
         METHOD_NAME = "sendMessageToMyHome"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5490,10 +4437,10 @@ class TalkService(BaseService):
         raise Exception("getWapInvitation is not implemented")
         METHOD_NAME = "getWapInvitation"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5507,10 +4454,10 @@ class TalkService(BaseService):
         raise Exception("getBuddySubscriberStates is not implemented")
         METHOD_NAME = "getBuddySubscriberStates"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5524,10 +4471,10 @@ class TalkService(BaseService):
         raise Exception("storeUpdateProfileAttribute is not implemented")
         METHOD_NAME = "storeUpdateProfileAttribute"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5541,10 +4488,10 @@ class TalkService(BaseService):
         raise Exception("notifyIndividualEvent is not implemented")
         METHOD_NAME = "notifyIndividualEvent"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5558,10 +4505,10 @@ class TalkService(BaseService):
         raise Exception("clearMessageBox is not implemented")
         METHOD_NAME = "clearMessageBox"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5575,10 +4522,10 @@ class TalkService(BaseService):
         raise Exception("updateCustomModeSettings is not implemented")
         METHOD_NAME = "updateCustomModeSettings"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5592,10 +4539,10 @@ class TalkService(BaseService):
         raise Exception("updateSettings is not implemented")
         METHOD_NAME = "updateSettings"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5609,10 +4556,10 @@ class TalkService(BaseService):
         raise Exception("sendMessageIgnored is not implemented")
         METHOD_NAME = "sendMessageIgnored"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5626,10 +4573,10 @@ class TalkService(BaseService):
         raise Exception("findAndAddContactsByEmail is not implemented")
         METHOD_NAME = "findAndAddContactsByEmail"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5643,10 +4590,10 @@ class TalkService(BaseService):
         raise Exception("getMessageBoxCompactWrapUp is not implemented")
         METHOD_NAME = "getMessageBoxCompactWrapUp"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5660,10 +4607,10 @@ class TalkService(BaseService):
         raise Exception("getPreviousMessages is not implemented")
         METHOD_NAME = "getPreviousMessages"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5677,10 +4624,10 @@ class TalkService(BaseService):
         raise Exception("commitUpdateProfile is not implemented")
         METHOD_NAME = "commitUpdateProfile"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5694,10 +4641,10 @@ class TalkService(BaseService):
         raise Exception("registerBuddyUser is not implemented")
         METHOD_NAME = "registerBuddyUser"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5711,10 +4658,10 @@ class TalkService(BaseService):
         raise Exception("getMessagesBySequenceNumber is not implemented")
         METHOD_NAME = "getMessagesBySequenceNumber"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5728,10 +4675,10 @@ class TalkService(BaseService):
         raise Exception("commitSendMessagesToMid is not implemented")
         METHOD_NAME = "commitSendMessagesToMid"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5745,10 +4692,10 @@ class TalkService(BaseService):
         raise Exception("isIdentityIdentifierAvailable is not implemented")
         METHOD_NAME = "isIdentityIdentifierAvailable"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5762,10 +4709,10 @@ class TalkService(BaseService):
         raise Exception("getMessageBoxList is not implemented")
         METHOD_NAME = "getMessageBoxList"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5779,10 +4726,10 @@ class TalkService(BaseService):
         raise Exception("registerWapDevice is not implemented")
         METHOD_NAME = "registerWapDevice"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5796,10 +4743,10 @@ class TalkService(BaseService):
         raise Exception("sendContentReceipt is not implemented")
         METHOD_NAME = "sendContentReceipt"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5813,10 +4760,10 @@ class TalkService(BaseService):
         raise Exception("updateC2DMRegistrationId is not implemented")
         METHOD_NAME = "updateC2DMRegistrationId"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5830,10 +4777,10 @@ class TalkService(BaseService):
         raise Exception("getMessageBoxListByStatus is not implemented")
         METHOD_NAME = "getMessageBoxListByStatus"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5847,10 +4794,10 @@ class TalkService(BaseService):
         raise Exception("createSession is not implemented")
         METHOD_NAME = "createSession"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5864,10 +4811,10 @@ class TalkService(BaseService):
         raise Exception("getOldReadMessageOpsWithRange is not implemented")
         METHOD_NAME = "getOldReadMessageOpsWithRange"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5881,10 +4828,10 @@ class TalkService(BaseService):
         raise Exception("inviteViaEmail is not implemented")
         METHOD_NAME = "inviteViaEmail"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5898,10 +4845,10 @@ class TalkService(BaseService):
         raise Exception("reportRooms is not implemented")
         METHOD_NAME = "reportRooms"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5915,10 +4862,10 @@ class TalkService(BaseService):
         raise Exception("reportGroups is not implemented")
         METHOD_NAME = "reportGroups"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5932,10 +4879,10 @@ class TalkService(BaseService):
         raise Exception("removeMessageFromMyHome is not implemented")
         METHOD_NAME = "removeMessageFromMyHome"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5949,10 +4896,10 @@ class TalkService(BaseService):
         raise Exception("getMessageBoxV2 is not implemented")
         METHOD_NAME = "getMessageBoxV2"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5966,10 +4913,10 @@ class TalkService(BaseService):
         raise Exception("destroyMessage is not implemented")
         METHOD_NAME = "destroyMessage"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -5983,10 +4930,10 @@ class TalkService(BaseService):
         raise Exception("getCompactContactsModifiedSince is not implemented")
         METHOD_NAME = "getCompactContactsModifiedSince"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6000,10 +4947,10 @@ class TalkService(BaseService):
         raise Exception("notifiedRedirect is not implemented")
         METHOD_NAME = "notifiedRedirect"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6017,10 +4964,10 @@ class TalkService(BaseService):
         raise Exception("updateSettings2 is not implemented")
         METHOD_NAME = "updateSettings2"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6034,10 +4981,10 @@ class TalkService(BaseService):
         raise Exception("reissueDeviceCredential is not implemented")
         METHOD_NAME = "reissueDeviceCredential"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6051,10 +4998,10 @@ class TalkService(BaseService):
         raise Exception("registerBuddyUserid is not implemented")
         METHOD_NAME = "registerBuddyUserid"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6068,10 +5015,10 @@ class TalkService(BaseService):
         raise Exception("getMessageBox is not implemented")
         METHOD_NAME = "getMessageBox"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6085,10 +5032,10 @@ class TalkService(BaseService):
         raise Exception("getMessageBoxWrapUpListV2 is not implemented")
         METHOD_NAME = "getMessageBoxWrapUpListV2"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6102,10 +5049,10 @@ class TalkService(BaseService):
         raise Exception("fetchAnnouncements is not implemented")
         METHOD_NAME = "fetchAnnouncements"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6119,10 +5066,10 @@ class TalkService(BaseService):
         raise Exception("sendEvent is not implemented")
         METHOD_NAME = "sendEvent"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6136,10 +5083,10 @@ class TalkService(BaseService):
         raise Exception("syncContactBySnsIds is not implemented")
         METHOD_NAME = "syncContactBySnsIds"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6153,10 +5100,10 @@ class TalkService(BaseService):
         raise Exception("validateContactsOnBot is not implemented")
         METHOD_NAME = "validateContactsOnBot"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6170,10 +5117,10 @@ class TalkService(BaseService):
         raise Exception("trySendMessage is not implemented")
         METHOD_NAME = "trySendMessage"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6187,10 +5134,10 @@ class TalkService(BaseService):
         raise Exception("getNextMessages is not implemented")
         METHOD_NAME = "getNextMessages"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6204,10 +5151,10 @@ class TalkService(BaseService):
         raise Exception("updatePublicKeychain is not implemented")
         METHOD_NAME = "updatePublicKeychain"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6221,10 +5168,10 @@ class TalkService(BaseService):
         raise Exception("getMessageBoxWrapUpList is not implemented")
         METHOD_NAME = "getMessageBoxWrapUpList"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6238,10 +5185,10 @@ class TalkService(BaseService):
         raise Exception("removeMessage is not implemented")
         METHOD_NAME = "removeMessage"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6255,10 +5202,10 @@ class TalkService(BaseService):
         raise Exception("getMessageBoxWrapUp is not implemented")
         METHOD_NAME = "getMessageBoxWrapUp"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6272,10 +5219,10 @@ class TalkService(BaseService):
         raise Exception("releaseSession is not implemented")
         METHOD_NAME = "releaseSession"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6289,10 +5236,10 @@ class TalkService(BaseService):
         raise Exception("getMessageBoxWrapUpV2 is not implemented")
         METHOD_NAME = "getMessageBoxWrapUpV2"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6306,10 +5253,10 @@ class TalkService(BaseService):
         raise Exception("getActiveBuddySubscriberIds is not implemented")
         METHOD_NAME = "getActiveBuddySubscriberIds"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6323,10 +5270,10 @@ class TalkService(BaseService):
         raise Exception("getSystemConfiguration is not implemented")
         METHOD_NAME = "getSystemConfiguration"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6340,10 +5287,10 @@ class TalkService(BaseService):
         raise Exception("notifyUpdatePublicKeychain is not implemented")
         METHOD_NAME = "notifyUpdatePublicKeychain"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6357,10 +5304,10 @@ class TalkService(BaseService):
         raise Exception("getBlockedContactIdsByRange is not implemented")
         METHOD_NAME = "getBlockedContactIdsByRange"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6374,10 +5321,10 @@ class TalkService(BaseService):
         raise Exception("getLastAnnouncementIndex is not implemented")
         METHOD_NAME = "getLastAnnouncementIndex"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6391,10 +5338,10 @@ class TalkService(BaseService):
         raise Exception("getMessageBoxCompactWrapUpV2 is not implemented")
         METHOD_NAME = "getMessageBoxCompactWrapUpV2"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6408,10 +5355,10 @@ class TalkService(BaseService):
         raise Exception("sendContentPreviewUpdated is not implemented")
         METHOD_NAME = "sendContentPreviewUpdated"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6425,10 +5372,10 @@ class TalkService(BaseService):
         raise Exception("getBuddyBlockerIds is not implemented")
         METHOD_NAME = "getBuddyBlockerIds"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6442,10 +5389,10 @@ class TalkService(BaseService):
         raise Exception("updateBuddySetting is not implemented")
         METHOD_NAME = "updateBuddySetting"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6459,10 +5406,10 @@ class TalkService(BaseService):
         raise Exception("updateApnsDeviceToken is not implemented")
         METHOD_NAME = "updateApnsDeviceToken"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6476,10 +5423,10 @@ class TalkService(BaseService):
         raise Exception("findContactsByEmail is not implemented")
         METHOD_NAME = "findContactsByEmail"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6493,10 +5440,10 @@ class TalkService(BaseService):
         raise Exception("agreeToLabFeature is not implemented")
         METHOD_NAME = "agreeToLabFeature"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6510,10 +5457,10 @@ class TalkService(BaseService):
         raise Exception("toggleLabFeature is not implemented")
         METHOD_NAME = "toggleLabFeature"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6527,10 +5474,10 @@ class TalkService(BaseService):
         raise Exception("getSymmetricKey is not implemented")
         METHOD_NAME = "getSymmetricKey"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6544,10 +5491,10 @@ class TalkService(BaseService):
         raise Exception("getAgreedToLabFeatures is not implemented")
         METHOD_NAME = "getAgreedToLabFeatures"
         params = []
-        sqrd = self.generateDummyProtocol(
+        sqrd = self.client.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
-        return self.postPackDataAndGetUnpackRespData(
+        return self.client.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
 
@@ -6560,15 +5507,7 @@ class TalkService(BaseService):
         """
         METHOD_NAME = "cancelReaction"
         params = TalkServiceStruct.CancelReactionRequest(messageId)
-        sqrd = self.generateDummyProtocol(
-            METHOD_NAME, params, self.TalkService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.TalkService_API_PATH,
-            sqrd,
-            self.TalkService_RES_TYPE,
-            readWith=f"{__class__.__name__}.{METHOD_NAME}",
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getNotificationSettings(self):
         """
@@ -6580,12 +5519,134 @@ class TalkService(BaseService):
         raise Exception("getNotificationSettings is not implemented")
         METHOD_NAME = "getNotificationSettings"
         params = []
+        sqrd = self.client.generateDummyProtocol(
+            METHOD_NAME, params, self.TalkService_REQ_TYPE
+        )
+        return self.client.postPackDataAndGetUnpackRespData(
+            self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
+        )
+
+    def registerE2EEPublicKeyV2(
+        self,
+        version: int,
+        keyId: Optional[int],
+        keyData: str,
+        time: int,
+        blobPayload: bytes,
+    ):
+        """Register E2EE public key v2."""
+        METHOD_NAME = "registerE2EEPublicKeyV2"
+        pk = [
+            [8, 1, version],
+            [8, 2, keyId],
+            [11, 4, keyData],
+            [10, 5, time],
+        ]
+        request = [
+            [8, 1, 0],  # reqSeq
+            [12, 2, pk],
+            [11, 3, blobPayload],
+        ]
+        params = [[12, 1, request]]
+        return self.__sender.send(METHOD_NAME, params)
+
+    def getIncrementalBackupMessages(self):
+        """
+        AUTO_GENERATED_CODE! DONT_USE_THIS_FUNC!!
+
+        GENERATED BY YinMo0913_DeachSword-DearSakura_v1.0.6.py
+        DATETIME: 10/31/2024, 14:52:45
+        """
+        raise Exception("getIncrementalBackupMessages is not implemented")
+        METHOD_NAME = "getIncrementalBackupMessages"
+        params = []
         sqrd = self.generateDummyProtocol(
             METHOD_NAME, params, self.TalkService_REQ_TYPE
         )
         return self.postPackDataAndGetUnpackRespData(
             self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
         )
+
+    def updatePinState(self):
+        """
+        AUTO_GENERATED_CODE! DONT_USE_THIS_FUNC!!
+
+        GENERATED BY YinMo0913_DeachSword-DearSakura_v1.0.6.py
+        DATETIME: 10/31/2024, 14:52:45
+        """
+        raise Exception("updatePinState is not implemented")
+        METHOD_NAME = "updatePinState"
+        params = []
+        sqrd = self.generateDummyProtocol(
+            METHOD_NAME, params, self.TalkService_REQ_TYPE
+        )
+        return self.postPackDataAndGetUnpackRespData(
+            self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
+        )
+
+    def getPinnedChats(self):
+        """
+        AUTO_GENERATED_CODE! DONT_USE_THIS_FUNC!!
+
+        GENERATED BY YinMo0913_DeachSword-DearSakura_v1.0.6.py
+        DATETIME: 10/31/2024, 14:52:45
+        """
+        raise Exception("getPinnedChats is not implemented")
+        METHOD_NAME = "getPinnedChats"
+        params = []
+        sqrd = self.generateDummyProtocol(
+            METHOD_NAME, params, self.TalkService_REQ_TYPE
+        )
+        return self.postPackDataAndGetUnpackRespData(
+            self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
+        )
+
+    def getBackupChats(self):
+        """
+        AUTO_GENERATED_CODE! DONT_USE_THIS_FUNC!!
+
+        GENERATED BY YinMo0913_DeachSword-DearSakura_v1.0.6.py
+        DATETIME: 10/31/2024, 14:52:45
+        """
+        raise Exception("getBackupChats is not implemented")
+        METHOD_NAME = "getBackupChats"
+        params = []
+        sqrd = self.generateDummyProtocol(
+            METHOD_NAME, params, self.TalkService_REQ_TYPE
+        )
+        return self.postPackDataAndGetUnpackRespData(
+            self.TalkService_API_PATH, sqrd, self.TalkService_RES_TYPE
+        )
+
+    def verifyQrcodeWithE2EE(
+        self,
+        verifier,
+        keyId,
+        keyData,
+        createdTime,
+        encryptedKeyChain,
+        hashKeyChain,
+        pinCode="",
+    ):
+        METHOD_NAME = "verifyQrcodeWithE2EE"
+        params = [
+            [11, 2, verifier],
+            [11, 3, pinCode],
+            [8, 4, 95],  # errorCode
+            [
+                12,
+                5,
+                [
+                    [8, 1, 1],  # version
+                    [8, 2, keyId],
+                    [11, 4, keyData],
+                    [10, 5, createdTime],
+                ],
+            ],
+            [11, 6, encryptedKeyChain],
+            [11, 7, hashKeyChain],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
 
 class TalkServiceStruct(BaseServiceStruct):
@@ -6598,17 +5659,13 @@ class TalkServiceStruct(BaseServiceStruct):
         return __class__.BaseRequest([[11, 1, chatMid]])
 
     @staticmethod
-    def DetermineMediaMessageFlowRequest(chatMid: str):
-        return __class__.BaseRequest([[11, 1, chatMid]])
-
-    @staticmethod
     def SyncRequest(
         revision: int,
         count: int,
         globalRev: int,
         individualRev: int,
-        fullSyncRequestReason: int,
-        lastPartialFullSyncs: dict,
+        fullSyncRequestReason: Optional[int],
+        lastPartialFullSyncs: Optional[dict],
     ):
         params = [
             [10, 1, revision],
@@ -6622,7 +5679,12 @@ class TalkServiceStruct(BaseServiceStruct):
 
 
 class TalkServiceHandler(BaseServiceHandler):
-    def SyncHandler(self, res: any):
+    def __init__(self, client: "CHRLINE") -> None:
+        super().__init__(client)
+
+        self.logger = self._logger.overload("TALK")
+
+    def SyncHandler(self, res: Any):
         """
         Sync handler.
 
@@ -6634,11 +5696,13 @@ class TalkServiceHandler(BaseServiceHandler):
         if res is None:
             return 1, []
         cl = self.cl
+        ll = self.logger.overload("Sync")
         isDebugOnly = True
         operationResponse = cl.checkAndGetValue(res, "operationResponse", 1)
         fullSyncResponse = cl.checkAndGetValue(res, "fullSyncResponse", 2)
-        partialFullSyncResponse = cl.checkAndGetValue(res, "partialFullSyncResponse", 2)
-        cl.log(f"[SyncHandler] Resp: {res}", isDebugOnly)
+        partialFullSyncResponse = cl.checkAndGetValue(res, "partialFullSyncResponse", 3)
+        ll.debug(f"Resp: {res}")
+        syncParams = {}
         if operationResponse is not None:
             ops = cl.checkAndGetValue(operationResponse, "operations", 1)
             hasMoreOps = cl.checkAndGetValue(operationResponse, "hasMoreOps", 2)
@@ -6649,25 +5713,35 @@ class TalkServiceHandler(BaseServiceHandler):
             if globalEvents is not None:
                 events = cl.checkAndGetValue(globalEvents, "events", 1)
                 lastRevision = cl.checkAndGetValue(globalEvents, "lastRevision", 2)
-                cl.globalRev = lastRevision
-                cl.log(f"[SyncHandler] new globalRev: {cl.globalRev}", isDebugOnly)
-                cl.log(f"[SyncHandler] globalEvents: {events}", isDebugOnly)
+                if isinstance(lastRevision, int):
+                    cl.globalRev = lastRevision
+                    ll.info(f"new globalRev: {cl.globalRev}")
 
             if individualEvents is not None:
                 events = cl.checkAndGetValue(individualEvents, "events", 1)
                 lastRevision = cl.checkAndGetValue(individualEvents, "lastRevision", 2)
-                cl.individualRev = lastRevision
-                cl.log(
-                    f"[SyncHandler] new individualRev: {cl.individualRev}", isDebugOnly
-                )
-                cl.log(f"[SyncHandler] individualEvents: {events}", isDebugOnly)
-            cl.log(f"[SyncHandler] operations: {ops}", isDebugOnly)
+                if isinstance(lastRevision, int):
+                    cl.individualRev = lastRevision
+                    ll.info(f"new individualRev: {cl.individualRev}")
+            ll.debug(f"operations: {ops}")
             return 1, ops
         elif fullSyncResponse is not None:
             # revision - 1 for sync revision on next req
             reasons = cl.checkAndGetValue(fullSyncResponse, "reasons", 1)
             syncRevision = cl.checkAndGetValue(fullSyncResponse, "nextRevision", 2)
-            cl.log(f"[SyncHandler] got fullSyncResponse: {reasons}")
-            return 2, syncRevision - 1
+            if not isinstance(syncRevision, int):
+                raise ValueError
+            ll.info(f"got fullSyncResponse: {reasons}")
+            syncParams = {
+                "revision": syncRevision
+            }
+        elif partialFullSyncResponse is not None:
+            ll.info(f"got partialFullSyncResponse: {partialFullSyncResponse}")
+            targetCategories = cl.checkAndGetValue(partialFullSyncResponse, "targetCategories", 1)
+            syncParams = {
+                "revision": cl.revision,
+                "lastPartialFullSyncs": targetCategories
+            }
         else:
-            raise EOFError(f"[SyncHandler] sync failed, unknown response: {res}")
+            raise EOFError(f"[SyncHandler] SyncResponse must include one of the response about operation / full sync / partial full sync: {res}")
+        return 2, syncParams

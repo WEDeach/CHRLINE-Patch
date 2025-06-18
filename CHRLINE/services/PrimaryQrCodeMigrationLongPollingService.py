@@ -1,14 +1,25 @@
 # -*- coding: utf-8 -*-
 
-class PrimaryQrCodeMigrationLongPollingService(object):
-    PQCMLPS_REQ_TYPE = 4
-    PQCMLPS_RES_TYPE = 4
-    PQCMLPS_API_PATH = "/EXT/auth/feature-user/lp/api/primary/mig/qr"
+from ..helper import ChrHelperProtocol
+from .BaseService import BaseServiceSender
+
+
+class PrimaryQrCodeMigrationLongPollingService(ChrHelperProtocol):
+    __REQ_TYPE = 4
+    __RES_TYPE = 4
+    __ENDPOINT = "/EXT/auth/feature-user/lp/api/primary/mig/qr"
 
     def __init__(self):
-        pass
+        self.__sender = BaseServiceSender(
+            self.client,
+            __class__.__name__,
+            self.__REQ_TYPE,
+            self.__RES_TYPE,
+            self.__ENDPOINT,
+        )
         
     def checkIfEncryptedE2EEKeyReceived(self, sessionId: str, newDevicePublicKey: bytes, encryptedQrIdentifier: str):
+        METHOD_NAME = "checkIfEncryptedE2EEKeyReceived"
         params = [
             [11, 1, sessionId],
             [12, 2, [
@@ -19,7 +30,4 @@ class PrimaryQrCodeMigrationLongPollingService(object):
         params = [
             [12, 1, params]
         ]
-        sqrd = self.generateDummyProtocol(
-            'checkIfEncryptedE2EEKeyReceived', params, self.PQCMLPS_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(
-            self.PQCMLPS_API_PATH ,sqrd, self.PQCMLPS_RES_TYPE, access_token=sessionId)
+        return self.__sender.send(METHOD_NAME, params)

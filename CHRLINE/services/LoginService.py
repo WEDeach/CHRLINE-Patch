@@ -1,19 +1,22 @@
 # -*- coding: utf-8 -*-
-from typing import TYPE_CHECKING
 
-from .BaseService import BaseServiceStruct
-
-if TYPE_CHECKING:
-    from CHRLINE import CHRLINE
+from ..helper import ChrHelperProtocol
+from .BaseService import BaseServiceSender
 
 
-class LoginService(object):
-    LoginService_REQ_TYPE = 4  # BASE_VAL
-    LoginService_RES_TYPE = 4  # BASE_VAL
-    LoginService_API_PATH = None  # BASE_VAL
+class LoginService(ChrHelperProtocol):
+    __REQ_TYPE = 4
+    __RES_TYPE = 4
+    __ENDPOINT = "/acct/lgn/sq/v1"
 
     def __init__(self):
-        pass
+        self.__sender = BaseServiceSender(
+            self.client,
+            "SecondaryQrCodeLoginService",
+            self.__REQ_TYPE,
+            self.__RES_TYPE,
+            self.__ENDPOINT,
+        )
 
     def qrCodeLoginForSecure(self):
         """
@@ -25,15 +28,15 @@ class LoginService(object):
         raise Exception("qrCodeLoginForSecure is not implemented")
         METHOD_NAME = "qrCodeLoginForSecure"
         params = []
-        sqrd = self.generateDummyProtocol(
-            METHOD_NAME, params, self.LoginService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.LoginService_API_PATH, sqrd, self.LoginService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def qrCodeLoginV2ForSecure(
-        self, authSessionId: str, modelName: str, systemName: str, secureCode: str, autoLoginIsRequired: bool = True
+        self,
+        authSessionId: str,
+        modelName: str,
+        systemName: str,
+        secureCode: str,
+        autoLoginIsRequired: bool = True,
     ):
         """
         Qr code login v2 for secure.
@@ -49,11 +52,9 @@ class LoginService(object):
             [2, 4, autoLoginIsRequired],
             [11, 5, secureCode],
         ]
-        return SecondaryQrCodeLoginServiceStruct.SendRequestByName(
-            self, METHOD_NAME, params
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
-    def createQrCodeForSecure(self, qrcode):
+    def createQrCodeForSecure(self, qrcode: str):
         """
         Create qr code for secure.
 
@@ -62,19 +63,4 @@ class LoginService(object):
         """
         METHOD_NAME = "createQrCodeForSecure"
         params = [[11, 1, qrcode]]
-        return SecondaryQrCodeLoginServiceStruct.SendRequestByName(
-            self, METHOD_NAME, params
-        )
-
-
-class SecondaryQrCodeLoginServiceStruct(BaseServiceStruct):
-    @staticmethod
-    def SendRequestByName(client: "CHRLINE", name: str, request: str):
-        payload = __class__.BaseRequest(request)
-        sqrd = client.generateDummyProtocol(name, payload, 4)
-        return client.postPackDataAndGetUnpackRespData(
-            "/acct/lgn/sq/v1",
-            sqrd,
-            4,
-            readWith=f"SecondaryQrCodeLoginService.{name}",
-        )
+        return self.__sender.send(METHOD_NAME, params)

@@ -1,9 +1,19 @@
-import time
 import socket
 import ssl
 import struct
-import h2.connection
+import time
 
+import h2.connection
+from h2.config import H2Configuration
+from h2.events import DataReceived, StreamEnded, StreamReset
+
+from .connData import (
+    LegyH2PingFrame,
+    LegyH2PingFrameType,
+    LegyH2PushFrame,
+    LegyH2PushFrameType,
+    LegyH2SignOnResponseFrame,
+)
 from .connManager import ConnManager
 
 
@@ -29,7 +39,8 @@ class Conn(object):
         ctx.set_alpn_protocols(["h2"])
         s = socket.create_connection((host, port))
         self.writer = ctx.wrap_socket(s, server_hostname=host)
-        self.conn = h2.connection.H2Connection()
+        config = H2Configuration(client_side=True)
+        self.conn = h2.connection.H2Connection(config=config)
         self.h2_headers = [
             (":method", "POST"),
             (":authority", host),
@@ -43,59 +54,69 @@ class Conn(object):
         self.send()
 
     def send(self):
-        send_data = self.conn.data_to_send()
-        if send_data:
-            self.client.log(f"[H2][PUSH] send data: {send_data.hex()}", True)
+        if self.conn and self.writer:
+            send_data = self.conn.data_to_send()
+            if send_data:
+                self.client.log(f"[H2][PUSH] send data: {send_data.hex()}", True)
+                self._last_send_time = time.time()
             self.writer.sendall(send_data)
-            self._last_send_time = time.time()
+        else:
+            raise RuntimeError
 
     def writeByte(self, data: bytes):
-        self.conn.send_data(stream_id=1, data=data, end_stream=False)
-        self.send()
+        if self.conn:
+            self.conn.send_data(stream_id=1, data=data, end_stream=False)
+            self.send()
+        else:
+            raise RuntimeError
 
-    def wirteRequest(self, requestType: int, data: bytes):
-        self.writeByte(self.manager.buildRequest(requestType, data))
+    def writeRequest(self, requestType: int, data: bytes):
+        d = self.manager.buildRequest(requestType, data)
+        self.writeByte(d)
 
     def read(self):
-        try:
-            response_stream_ended = self._closed
-            self.send()
-            while not response_stream_ended and self.client.is_login:
-                data = self.writer.recv(65536 * 1024)
-                if not data:
-                    break
-                events = self.conn.receive_data(data)
-                for event in events:
-                    if isinstance(event, h2.events.DataReceived):
-                        # update flow control so the server doesn't starve us
-                        self.conn.acknowledge_received_data(
-                            event.flow_controlled_length, event.stream_id
-                        )
-
-                        _data = event.data
-                        if len(_data) < 4:
-                            self.client.log(f"[CONN] Invalid Packet: {_data.hex()}")
-                            continue
-                        self.onDataReceived(_data)
-                    elif isinstance(event, h2.events.StreamEnded):
-                        # response body completed, let's exit the loop
-                        response_stream_ended = True
-                        break
-                    elif isinstance(event, h2.events.StreamReset):
-                        raise RuntimeError("Stream reset: %d" % event.error_code)
-                # send any pending data to the server
+        if self.conn and self.writer:
+            try:
+                response_stream_ended = self._closed
                 self.send()
-            self.conn.close_connection()
-            self.send()
-        except Exception as e:
-            self.client.log(f"[CONN] task disconnect: {e}")
-            if isinstance(e, OSError):
-                pass
-            else:
-                raise e
-        self._closed = True
-        # close the socket
-        self.writer.close()
+                while not response_stream_ended and self.client.is_login:
+                    data = self.writer.recv(65536 * 1024)
+                    if not data:
+                        break
+                    events = self.conn.receive_data(data)
+                    for event in events:
+                        if isinstance(event, DataReceived):
+                            # update flow control so the server doesn't starve us
+                            self.conn.acknowledge_received_data(
+                                event.flow_controlled_length, event.stream_id
+                            )
+
+                            _data = event.data
+                            if _data is not None and len(_data) < 4:
+                                self.client.log(f"[CONN] Invalid Packet: {_data.hex()}")
+                                continue
+                            self.onDataReceived(_data)
+                        elif isinstance(event, StreamEnded):
+                            # response body completed, let's exit the loop
+                            response_stream_ended = True
+                            break
+                        elif isinstance(event, StreamReset):
+                            raise RuntimeError("Stream reset: %d" % event.error_code)
+                    # send any pending data to the server
+                    self.send()
+                self.conn.close_connection()
+                self.send()
+            except Exception as e:
+                self.client.log(f"[CONN] task disconnect: {e}")
+                if isinstance(e, OSError):
+                    pass
+                else:
+                    raise e
+            self._closed = True
+            # close the socket
+            self.writer.close()
+        else:
+            raise RuntimeError
 
     def IsAble2Request(self):
         if self.client.is_login and not self._closed:
@@ -131,25 +152,30 @@ class Conn(object):
         self.onPacketReceived(_dt, _dd)
 
     def onPacketReceived(self, _dt, _dd):
+        debug_only = True
         if _dt == 1:
             _pingType = _dd[0]
             (_pingId,) = struct.unpack("!H", _dd[1:3])
-            self.client.log(f"[PUSH] receives ping frame. pingId:{_pingId}", True)
+            packet = LegyH2PingFrame(_pingType, _pingId)
+            self.client.log(
+                f"[PUSH] receives ping frame. pingId:{packet.ping_id}", debug_only
+            )
 
-            if _pingType == 2:
-                self.writeByte(bytes([0, 3, 1, 1]) + struct.pack("!H", _pingId))
-                self.client.log(f"[PUSH] send ping ack. pingId:{_pingId}", True)
+            if packet.ping_type == LegyH2PingFrameType.ACK_REQUIRED:
+                self.writeByte(packet.ack_packet())
+                self.client.log(f"[PUSH] send ping ack. pingId:{_pingId}", debug_only)
                 self.manager.OnPingCallback(_pingId)
             else:
                 raise NotImplementedError(f"ping type not Implemented: {_pingType}")
         elif _dt == 3:
-            (I,) = struct.unpack("!H", _dd[0:2])
-            _requestId = I & 32767
+            (req,) = struct.unpack("!H", _dd[0:2])
+            _requestId = req & 32767
             # Android using 32768, CHRLINE use (32768 / 2)
-            _isFin = (I & 32768) != 0
+            _isFin = (req & 32768) != 0
             _responsePayload = _dd[2:]
-            if _isFin:
-                if _requestId in self.notFinPayloads:
+            packet = LegyH2SignOnResponseFrame(_requestId, _isFin, _responsePayload)
+            if packet.is_fin:
+                if packet.request_id in self.notFinPayloads:
                     _responsePayload = (
                         self.notFinPayloads[_requestId] + _responsePayload
                     )
@@ -157,32 +183,34 @@ class Conn(object):
                 self.manager.OnSignOnResponse(_requestId, _isFin, _responsePayload)
             else:
                 self.client.log(
-                    f"[PUSH] receives long data. requestId: {_requestId}, I={I}", True
+                    f"[PUSH] receives long data. requestId: {_requestId}, req={req}",
+                    debug_only,
                 )
-                if _requestId not in self.notFinPayloads:
-                    self.notFinPayloads[_requestId] = b""
-                self.notFinPayloads[_requestId] += _responsePayload
+                if packet.request_id not in self.notFinPayloads:
+                    self.notFinPayloads[packet.request_id] = b""
+                self.notFinPayloads[packet.request_id] += packet.response_payload
         elif _dt == 4:
             _pushType = _dd[0]
             _serviceType = _dd[1]
             (_pushId,) = struct.unpack("!i", _dd[2:6])
-            self.client.log(f"[PUSH] receives push frame. service:{_serviceType}", True)
-            if _pushType in [0, 2]:
-                _pushPayload = _dd[6:]
-
-                if _pushType == 2:
+            _pushPayload = _dd[6:]
+            packet = LegyH2PushFrame(_pushType, _serviceType, _pushId, _pushPayload)
+            self.client.log(
+                f"[PUSH] receives push frame. service:{packet.service_type}", debug_only
+            )
+            if packet.push_type in [
+                LegyH2PushFrameType.NONE,
+                LegyH2PushFrameType.ACK_REQUIRED,
+            ]:
+                if packet.push_type == LegyH2PushFrameType.ACK_REQUIRED:
                     # SEND ACK FOR PUSHES
-                    _PushAck = (
-                        bytes([1] + [_serviceType]) + struct.pack("!i", _pushId) + b""
-                    )
-                    _DATA = struct.pack("!H", len(_PushAck)) + bytes([4]) + _PushAck
-                    self.conn.send_data(stream_id=1, data=_DATA, end_stream=False)
+                    self.writeByte(packet.ack_packet())
                     self.client.log(
-                        f"[PUSH] send push ack. service:{_serviceType}", True
+                        f"[PUSH] send push ack. service:{_serviceType}", debug_only
                     )
 
                 # Callback
-                self.manager.OnPushResponse(_serviceType, _pushId, _pushPayload)
+                self.manager.OnPushResponse(packet)
             else:
                 raise NotImplementedError(f"push type not Implemented: {_pushType}")
         else:
@@ -194,8 +222,9 @@ class Conn(object):
         """Close conn."""
         self._closed = True
         # write close packet
-        self.conn.close_connection()
-        self.send()
-        # close the socket
-        self.writer.shutdown(socket.SHUT_RDWR)
-        self.writer.close()
+        if self.conn and self.writer:
+            self.conn.close_connection()
+            self.send()
+            # close the socket
+            self.writer.shutdown(socket.SHUT_RDWR)
+            self.writer.close()

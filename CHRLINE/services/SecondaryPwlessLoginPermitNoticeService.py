@@ -1,26 +1,37 @@
 # -*- coding: utf-8 -*-
 
-class SecondaryPwlessLoginPermitNoticeService(object):
-    
+from ..helper import ChrHelperProtocol
+from .BaseService import BaseServiceSender
+
+
+class SecondaryPwlessLoginPermitNoticeService(ChrHelperProtocol):
+    __REQ_TYPE = 4
+    __RES_TYPE = 4
+    __ENDPOINT = "/acct/lp/lgn/secpwless/v1"
+
     def __init__(self):
-        pass
+        self.__sender = BaseServiceSender(
+            self.client,
+            __class__.__name__,
+            self.__REQ_TYPE,
+            self.__RES_TYPE,
+            self.__ENDPOINT,
+        )
 
     def checkPwlessPinCodeVerified(self, session):
+        METHOD_NAME = "checkPinCodeVerified"
         params = [
-            [12, 1, [
-                [11, 1, session],
-            ]]
+            [
+                12,
+                1,
+                [
+                    [11, 1, session],
+                ],
+            ]
         ]
-        sqrd = self.generateDummyProtocol('checkPinCodeVerified', params, 4)
-        return self.postPackDataAndGetUnpackRespData(self.LINE_SECONDARY_PWLESS_LOGIN_PERMIT_ENDPOINT ,sqrd, 4, access_token=session)
+        return self.__sender.send(METHOD_NAME, params, access_token=session)
 
     def checkPaakAuthenticated(self, session):
-        params = [
-            [12, 1, [
-                [11, 1, session],
-                [11, 2, 'CHANNELGW'],
-                [2, 3, True]
-            ]]
-        ]
-        sqrd = self.generateDummyProtocol('checkPaakAuthenticated', params, 4)
-        return self.postPackDataAndGetUnpackRespData(self.LINE_SECONDARY_PWLESS_LOGIN_PERMIT_ENDPOINT ,sqrd, 4, access_token=session)
+        METHOD_NAME = "checkPaakAuthenticated"
+        params = [[12, 1, [[11, 1, session], [11, 2, "CHANNELGW"], [2, 3, True]]]]
+        return self.__sender.send(METHOD_NAME, params, access_token=session)

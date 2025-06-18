@@ -1,81 +1,57 @@
 # -*- coding: utf-8 -*-
 
-class ChannelService(object):
+from ..helper import ChrHelperProtocol
+from .BaseService import BaseServiceSender
+
+
+class ChannelService(ChrHelperProtocol):
+    __REQ_TYPE = 4
+    __RES_TYPE = 4
+    __ENDPOINT = "/CH4"
 
     def __init__(self):
-        pass
+        self.__sender = BaseServiceSender(
+            self.client,
+            __class__.__name__,
+            self.__REQ_TYPE,
+            self.__RES_TYPE,
+            self.__ENDPOINT,
+        )
 
     def issueChannelToken(self, channelId="1341209950"):
         METHOD_NAME = "issueChannelToken"
-        sqrd = [128, 1, 0, 1] + \
-            self.getStringBytes('issueChannelToken') + [0, 0, 0, 0]
-        sqrd += [11, 0, 1] + self.getStringBytes(channelId)
-        sqrd += [0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_CHANNEL_ENDPOINT, sqrd, readWith=f"ChannelService.{METHOD_NAME}")
+        params = [[11, 1, channelId]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def approveChannelAndIssueChannelToken(self, channelId="1341209950"):
         METHOD_NAME = "approveChannelAndIssueChannelToken"
-        sqrd = [128, 1, 0, 1] + \
-            self.getStringBytes(
-                'approveChannelAndIssueChannelToken') + [0, 0, 0, 0]
-        sqrd += [11, 0, 1] + self.getStringBytes(channelId)
-        sqrd += [0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_CHANNEL_ENDPOINT, sqrd, readWith=f"ChannelService.{METHOD_NAME}")
+        params = [[11, 1, channelId]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def getChannelInfo(self, channelId):
         METHOD_NAME = "getChannelInfo"
-        sqrd = [128, 1, 0, 1, 0, 0, 0, 14, 103, 101, 116, 67, 104, 97, 110, 110,
-                101, 108, 73, 110, 102, 111, 0, 0, 0, 0, 11, 0, 2, 0, 0, 0, len(channelId)]
-        for value in str(channelId):
-            sqrd.append(ord(value))
-        sqrd += [0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_CHANNEL_ENDPOINT, sqrd, readWith=f"ChannelService.{METHOD_NAME}")
+        params = [[11, 2, channelId]]
+        return self.__sender.send(METHOD_NAME, params)
 
-    def getCommonDomains(self, lastSynced=0):
+    def getCommonDomains(self, lastSynced: int = 0):
         METHOD_NAME = "getCommonDomains"
-        sqrd = [128, 1, 0, 1, 0, 0, 0, 16, 103, 101, 116, 67, 111, 109,
-                109, 111, 110, 68, 111, 109, 97, 105, 110, 115, 0, 0, 0, 0, 0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_CHANNEL_ENDPOINT, sqrd, readWith=f"ChannelService.{METHOD_NAME}")
+        params = [[10, 1, lastSynced]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def issueRequestTokenWithAuthScheme(self, channelId, otpId, authScheme, returnUrl):
         METHOD_NAME = "issueRequestTokenWithAuthScheme"
-        sqrd = [128, 1, 0, 1, 0, 0, 0, 31, 105, 115, 115, 117, 101, 82, 101, 113, 117, 101, 115, 116, 84,
-                111, 107, 101, 110, 87, 105, 116, 104, 65, 117, 116, 104, 83, 99, 104, 101, 109, 101, 0, 0, 0, 0]
-        sqrd += [11, 0, 1, 0, 0, 0, len(channelId)]
-        for value in channelId:
-            sqrd.append(ord(value))
-        sqrd += [11, 0, 2, 0, 0, 0, len(otpId)]
-        for value in otpId:
-            sqrd.append(ord(value))
-        sqrd += [15, 0, 3, 11, 0, 0, 0, len(authScheme)]
-        for mid in authScheme:
-            sqrd += [0, 0, 0, len(mid)]
-            for value in mid:
-                sqrd.append(ord(value))
-        sqrd += [11, 0, 4, 0, 0, 0, len(returnUrl)]
-        for value in returnUrl:
-            sqrd.append(ord(value))
-        sqrd += [0]
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_CHANNEL_ENDPOINT, sqrd, readWith=f"ChannelService.{METHOD_NAME}")
+        params = [
+            [11, 1, channelId],
+            [11, 2, otpId],
+            [15, 3, [11, authScheme]],
+            [11, 4, returnUrl],
+        ]
+        return self.__sender.send(METHOD_NAME, params)
 
     def getReturnUrlWithRequestTokenForAutoLogin(self, url, sessionString=None):
         METHOD_NAME = "getReturnUrlWithRequestTokenForAutoLogin"
-        params = [
-            [12, 2, [
-                [11, 1, url],
-                [11, 2, sessionString]
-            ]]
-        ]
-        sqrd = self.generateDummyProtocol(
-            'getReturnUrlWithRequestTokenForAutoLogin', params, 4)
-        return self.postPackDataAndGetUnpackRespData(
-            self.LINE_CHANNEL_ENDPOINT_V4, sqrd, 4, 
-            readWith=f"ChannelService.{METHOD_NAME}")
+        params = [[12, 2, [[11, 1, url], [11, 2, sessionString]]]]
+        return self.__sender.send(METHOD_NAME, params)
 
     def getWebLoginDisallowedUrl(self):
         """
@@ -84,8 +60,11 @@ class ChannelService(object):
         raise Exception("getWebLoginDisallowedUrl is not implemented")
         params = []
         sqrd = self.generateDummyProtocol(
-            "getWebLoginDisallowedUrl", params, ChannelService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE)
+            "getWebLoginDisallowedUrl", params, ChannelService_REQ_TYPE
+        )
+        return self.postPackDataAndGetUnpackRespData(
+            ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE
+        )
 
     def updateChannelNotificationSetting(self):
         """
@@ -94,8 +73,11 @@ class ChannelService(object):
         raise Exception("updateChannelNotificationSetting is not implemented")
         params = []
         sqrd = self.generateDummyProtocol(
-            "updateChannelNotificationSetting", params, ChannelService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE)
+            "updateChannelNotificationSetting", params, ChannelService_REQ_TYPE
+        )
+        return self.postPackDataAndGetUnpackRespData(
+            ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE
+        )
 
     def updateChannelSettings(self):
         """
@@ -104,8 +86,11 @@ class ChannelService(object):
         raise Exception("updateChannelSettings is not implemented")
         params = []
         sqrd = self.generateDummyProtocol(
-            "updateChannelSettings", params, ChannelService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE)
+            "updateChannelSettings", params, ChannelService_REQ_TYPE
+        )
+        return self.postPackDataAndGetUnpackRespData(
+            ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE
+        )
 
     def syncChannelData(self):
         """
@@ -114,8 +99,11 @@ class ChannelService(object):
         raise Exception("syncChannelData is not implemented")
         params = []
         sqrd = self.generateDummyProtocol(
-            "syncChannelData", params, ChannelService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE)
+            "syncChannelData", params, ChannelService_REQ_TYPE
+        )
+        return self.postPackDataAndGetUnpackRespData(
+            ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE
+        )
 
     def getUpdatedChannelIds(self):
         """
@@ -124,8 +112,11 @@ class ChannelService(object):
         raise Exception("getUpdatedChannelIds is not implemented")
         params = []
         sqrd = self.generateDummyProtocol(
-            "getUpdatedChannelIds", params, ChannelService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE)
+            "getUpdatedChannelIds", params, ChannelService_REQ_TYPE
+        )
+        return self.postPackDataAndGetUnpackRespData(
+            ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE
+        )
 
     def getChannels(self):
         """
@@ -134,8 +125,11 @@ class ChannelService(object):
         raise Exception("getChannels is not implemented")
         params = []
         sqrd = self.generateDummyProtocol(
-            "getChannels", params, ChannelService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE)
+            "getChannels", params, ChannelService_REQ_TYPE
+        )
+        return self.postPackDataAndGetUnpackRespData(
+            ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE
+        )
 
     def getDomains(self):
         """
@@ -143,9 +137,10 @@ class ChannelService(object):
         """
         raise Exception("getDomains is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
-            "getDomains", params, ChannelService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE)
+        sqrd = self.generateDummyProtocol("getDomains", params, ChannelService_REQ_TYPE)
+        return self.postPackDataAndGetUnpackRespData(
+            ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE
+        )
 
     def revokeAccessToken(self):
         """
@@ -154,19 +149,24 @@ class ChannelService(object):
         raise Exception("revokeAccessToken is not implemented")
         params = []
         sqrd = self.generateDummyProtocol(
-            "revokeAccessToken", params, ChannelService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE)
+            "revokeAccessToken", params, ChannelService_REQ_TYPE
+        )
+        return self.postPackDataAndGetUnpackRespData(
+            ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE
+        )
 
     def approveChannelAndIssueRequestToken(self):
         """
         AUTO_GENERATED_CODE! DONT_USE_THIS_FUNC!!
         """
-        raise Exception(
-            "approveChannelAndIssueRequestToken is not implemented")
+        raise Exception("approveChannelAndIssueRequestToken is not implemented")
         params = []
         sqrd = self.generateDummyProtocol(
-            "approveChannelAndIssueRequestToken", params, ChannelService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE)
+            "approveChannelAndIssueRequestToken", params, ChannelService_REQ_TYPE
+        )
+        return self.postPackDataAndGetUnpackRespData(
+            ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE
+        )
 
     def getChannelNotificationSettings(self):
         """
@@ -175,8 +175,11 @@ class ChannelService(object):
         raise Exception("getChannelNotificationSettings is not implemented")
         params = []
         sqrd = self.generateDummyProtocol(
-            "getChannelNotificationSettings", params, ChannelService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE)
+            "getChannelNotificationSettings", params, ChannelService_REQ_TYPE
+        )
+        return self.postPackDataAndGetUnpackRespData(
+            ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE
+        )
 
     def reserveCoinUse(self):
         """
@@ -185,8 +188,11 @@ class ChannelService(object):
         raise Exception("reserveCoinUse is not implemented")
         params = []
         sqrd = self.generateDummyProtocol(
-            "reserveCoinUse", params, ChannelService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE)
+            "reserveCoinUse", params, ChannelService_REQ_TYPE
+        )
+        return self.postPackDataAndGetUnpackRespData(
+            ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE
+        )
 
     def getApprovedChannels(self):
         """
@@ -195,8 +201,11 @@ class ChannelService(object):
         raise Exception("getApprovedChannels is not implemented")
         params = []
         sqrd = self.generateDummyProtocol(
-            "getApprovedChannels", params, ChannelService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE)
+            "getApprovedChannels", params, ChannelService_REQ_TYPE
+        )
+        return self.postPackDataAndGetUnpackRespData(
+            ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE
+        )
 
     def issueRequestToken(self):
         """
@@ -205,8 +214,11 @@ class ChannelService(object):
         raise Exception("issueRequestToken is not implemented")
         params = []
         sqrd = self.generateDummyProtocol(
-            "issueRequestToken", params, ChannelService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE)
+            "issueRequestToken", params, ChannelService_REQ_TYPE
+        )
+        return self.postPackDataAndGetUnpackRespData(
+            ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE
+        )
 
     def issueRequestTokenForAutoLogin(self):
         """
@@ -215,8 +227,11 @@ class ChannelService(object):
         raise Exception("issueRequestTokenForAutoLogin is not implemented")
         params = []
         sqrd = self.generateDummyProtocol(
-            "issueRequestTokenForAutoLogin", params, ChannelService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE)
+            "issueRequestTokenForAutoLogin", params, ChannelService_REQ_TYPE
+        )
+        return self.postPackDataAndGetUnpackRespData(
+            ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE
+        )
 
     def getNotificationBadgeCount(self):
         """
@@ -225,8 +240,11 @@ class ChannelService(object):
         raise Exception("getNotificationBadgeCount is not implemented")
         params = []
         sqrd = self.generateDummyProtocol(
-            "getNotificationBadgeCount", params, ChannelService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE)
+            "getNotificationBadgeCount", params, ChannelService_REQ_TYPE
+        )
+        return self.postPackDataAndGetUnpackRespData(
+            ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE
+        )
 
     def revokeChannel(self):
         """
@@ -235,8 +253,11 @@ class ChannelService(object):
         raise Exception("revokeChannel is not implemented")
         params = []
         sqrd = self.generateDummyProtocol(
-            "revokeChannel", params, ChannelService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE)
+            "revokeChannel", params, ChannelService_REQ_TYPE
+        )
+        return self.postPackDataAndGetUnpackRespData(
+            ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE
+        )
 
     def getChannelSettings(self):
         """
@@ -245,8 +266,11 @@ class ChannelService(object):
         raise Exception("getChannelSettings is not implemented")
         params = []
         sqrd = self.generateDummyProtocol(
-            "getChannelSettings", params, ChannelService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE)
+            "getChannelSettings", params, ChannelService_REQ_TYPE
+        )
+        return self.postPackDataAndGetUnpackRespData(
+            ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE
+        )
 
     def issueOTP(self):
         """
@@ -254,9 +278,10 @@ class ChannelService(object):
         """
         raise Exception("issueOTP is not implemented")
         params = []
-        sqrd = self.generateDummyProtocol(
-            "issueOTP", params, ChannelService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE)
+        sqrd = self.generateDummyProtocol("issueOTP", params, ChannelService_REQ_TYPE)
+        return self.postPackDataAndGetUnpackRespData(
+            ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE
+        )
 
     def fetchNotificationItems(self):
         """
@@ -265,8 +290,11 @@ class ChannelService(object):
         raise Exception("fetchNotificationItems is not implemented")
         params = []
         sqrd = self.generateDummyProtocol(
-            "fetchNotificationItems", params, ChannelService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE)
+            "fetchNotificationItems", params, ChannelService_REQ_TYPE
+        )
+        return self.postPackDataAndGetUnpackRespData(
+            ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE
+        )
 
     def getFriendChannelMatrices(self):
         """
@@ -275,8 +303,11 @@ class ChannelService(object):
         raise Exception("getFriendChannelMatrices is not implemented")
         params = []
         sqrd = self.generateDummyProtocol(
-            "getFriendChannelMatrices", params, ChannelService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE)
+            "getFriendChannelMatrices", params, ChannelService_REQ_TYPE
+        )
+        return self.postPackDataAndGetUnpackRespData(
+            ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE
+        )
 
     def getChannelNotificationSetting(self):
         """
@@ -285,8 +316,11 @@ class ChannelService(object):
         raise Exception("getChannelNotificationSetting is not implemented")
         params = []
         sqrd = self.generateDummyProtocol(
-            "getChannelNotificationSetting", params, ChannelService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE)
+            "getChannelNotificationSetting", params, ChannelService_REQ_TYPE
+        )
+        return self.postPackDataAndGetUnpackRespData(
+            ChannelService_API_PATH, sqrd, ChannelService_RES_TYPE
+        )
 
     def issueChannelAppView(self):
         """
@@ -299,8 +333,11 @@ class ChannelService(object):
         METHOD_NAME = "issueChannelAppView"
         params = []
         sqrd = self.generateDummyProtocol(
-            METHOD_NAME, params, self.ChannelService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(self.ChannelService_API_PATH, sqrd,  self.ChannelService_RES_TYPE)
+            METHOD_NAME, params, self.ChannelService_REQ_TYPE
+        )
+        return self.postPackDataAndGetUnpackRespData(
+            self.ChannelService_API_PATH, sqrd, self.ChannelService_RES_TYPE
+        )
 
     def getWebLoginDisallowedURL(self):
         """
@@ -313,5 +350,8 @@ class ChannelService(object):
         METHOD_NAME = "getWebLoginDisallowedURL"
         params = []
         sqrd = self.generateDummyProtocol(
-            METHOD_NAME, params, self.ChannelService_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(self.ChannelService_API_PATH, sqrd,  self.ChannelService_RES_TYPE)
+            METHOD_NAME, params, self.ChannelService_REQ_TYPE
+        )
+        return self.postPackDataAndGetUnpackRespData(
+            self.ChannelService_API_PATH, sqrd, self.ChannelService_RES_TYPE
+        )

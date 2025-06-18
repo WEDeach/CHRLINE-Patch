@@ -1,56 +1,50 @@
-import gevent.monkey
+from os import system
+from typing import Any, List, Optional
 
-from .services.thrift.ttypes import SquareException
-
-gevent.monkey.patch_all()
-
-from .exceptions import LineServiceException
+from .api import API
+from .BIZ.manager import BizManager
+from .config import Config
 from .e2ee import E2EE
-from .cube import LineCube
-from .helpers import Helpers
-from .timelineBiz import TimelineBiz
-from .timeline import Timeline
+from .helper import ChrHelper
+from .models import Models
 from .object import Object
 from .poll import Poll
 from .thrift import Thrift
-from .api import API
-from .config import Config
-from .models import Models
-from os import system
 
 
 class CHRLINE(
+    ChrHelper,
     Models,
     Config,
     API,
     Thrift,
     Poll,
     Object,
-    Timeline,
-    TimelineBiz,
-    Helpers,
-    LineCube,
     E2EE,
 ):
     def __init__(
         self,
-        authTokenOrEmail: str = None,
-        password: str = None,
+        authTokenOrEmail: Optional[str] = None,
+        password: Optional[str] = None,
         device: str = "CHROMEOS",
-        version: str = None,
-        os_name: str = None,
-        os_version: str = None,
+        version: Optional[str] = None,
+        os_name: Optional[str] = None,
+        os_version: Optional[str] = None,
         noLogin: bool = False,
         encType: int = 1,
         debug: bool = False,
-        customDataId: str = None,
-        phone: str = None,
-        region: str = None,
-        forwardedIp: str = None,
+        customDataId: Optional[str] = None,
+        phone: Optional[str] = None,
+        region: Optional[str] = None,
+        forwardedIp: Optional[str] = None,
         useThrift: bool = False,
         forceTMCP: bool = False,
-        savePath: str = None,
-        os_model: str = None
+        savePath: Optional[str] = None,
+        os_model: Optional[str] = None,
+        rootLogLevel: int = 20,
+        logFilterNs: List[str] = [],
+        *,
+        genThriftPath: Optional[str] = None
     ):
         r"""
         Line client for CHRLINE.
@@ -71,13 +65,11 @@ class CHRLINE(
             Set whether not to login
         encType: `int`
             Encryption for requests.
+            - 0: no encryption.
+            - 1: legy encryption
 
-            - 0:
-                no encryption.
-            - 1:
-                legy encryption.
         debug: `bool`
-            * Developer options *
+            *Developer options*
             For view some params and logs
         customDataId: `str`
             Special the customData id
@@ -94,13 +86,24 @@ class CHRLINE(
         os_model: `str`
             Set System model name.
         """
-        if device == "CHROMEOS" and version is None:
+        if device == "CHROMEOS" and version is None and not noLogin:
             raise ValueError(
                 'Please specify the version of LINE for CHROMEOS: `CHRLINE(..., version="3")`\nor just use other device type to login: `CHRLINE(..., device="DESTOPWIN")`'
             )
         self.encType = encType
         self.isDebug = debug
+        if customDataId is None:
+            customDataId = "CHRLINE_CUSTOM_0"
         self.customDataId = customDataId
+        self.can_use_square = False
+        self.__squares: Any = None
+        ChrHelper.__init__(self, cl=self)
+        self.logger = self.get_logger()
+        if self.isDebug:
+            rootLogLevel = 0
+        self.logger.set_root_level(rootLogLevel)
+        if logFilterNs:
+            self.logger.add_log_fliters(*logFilterNs)
         Models.__init__(self, savePath)
         Config.__init__(self, device)
         self.initAppConfig(device, version, os_name, os_version, os_model)
@@ -109,6 +112,9 @@ class CHRLINE(
         self.is_login = False
         self.use_thrift = useThrift
         self.force_tmore = forceTMCP
+        self.LINE_SERVICE_REGION = ""
+        self.path_gen_thrift = genThriftPath
+        self.readGenThrifts()
         if region is not None:
             self.LINE_SERVICE_REGION = region
 
@@ -125,7 +131,7 @@ class CHRLINE(
             if not noLogin:
                 sqr_func = self.requestSQR
                 if device in self.TOKEN_V3_SUPPORT:
-                    sqr_func = self.requestSQR2
+                    sqr_func = self.requestSQR3
                 for b in sqr_func():
                     print(b)
         if self.authToken:
@@ -140,23 +146,33 @@ class CHRLINE(
             )
         __profile_err = self.checkAndGetValue(self.profile, "error")
         if __profile_err is not None:
-            self.log(f"登入失敗... {__profile_err}")
+            self.log(f"Login failed... {__profile_err}")
+            b = None
             try:
                 for b in self.requestSQR(False):
                     print(b)
-            except:
-                raise Exception(f"登入失敗... {__profile_err}")
-            self.handleNextToken(b)
+            except Exception as _:
+                raise Exception(f"Login failed... {__profile_err}")
+            if b is not None:
+                self.handleNextToken(b)
             return self.initAll()
-        self.mid = self.checkAndGetValue(self.profile, "mid", 1)
-        assert self.mid is not None
+        mid = self.checkAndGetValue(self.profile, "mid", 1)
+        if not isinstance(mid, str):
+            raise TypeError(
+                "`mid` expected type `str`, but got type `%s`: %r" % (type(mid), mid)
+            )
+        self.mid = mid
+        __regionCode = self.checkAndGetValue(self.profile, "regionCode", 12)
         __displayName = self.checkAndGetValue(self.profile, "displayName", 20)
-        self.log(f"[{__displayName}] 登入成功 ({self.mid}) / {self.DEVICE_TYPE}")
+        self.logger.info(
+            f"[{__displayName}] 登入成功 ({self.mid}) / {self.DEVICE_TYPE}"
+        )
+        self.LINE_SERVICE_REGION = __regionCode
         if self.customDataId is None:
             self.customDataId = self.mid
         try:
             system(f"title CHRLINE - {__displayName}")
-        except:
+        except Exception as _:
             pass
         self.revision = -1
         try:
@@ -168,25 +184,17 @@ class CHRLINE(
             self.groups = []
 
         E2EE.__init__(self)
-        Timeline.__init__(self)
-        TimelineBiz.__init__(self)
+        self.biz = BizManager(self)
         Poll.__init__(self)
         Object.__init__(self)
-        LineCube.__init__(self)
-        Helpers.__init__(self)
 
         self.is_login = True
-
-        self.can_use_square = False
-        self.squares = None
-        try:
-            _squares = self.getJoinedSquares()
-            self.can_use_square = True
-            self.squares = _squares
-        except SquareException as e:
-            self.log(f"Not support Square: {e.reason}")
-        except LineServiceException as e:
-            self.log(f"Not support Square: {e.message}")
-
         self.custom_data = {}
         self.getCustomData()
+
+    @property
+    def squares(self):
+        if self.__squares is None:
+            self.__squares = self.getJoinedSquares()
+            self.can_use_square = True
+        return self.__squares

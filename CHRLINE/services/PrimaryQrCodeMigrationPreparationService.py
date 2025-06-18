@@ -1,33 +1,40 @@
 # -*- coding: utf-8 -*-
 
-class PrimaryQrCodeMigrationPreparationService(object):
-    PQCMPS_REQ_TYPE = 4
-    PQCMPS_RES_TYPE = 4
-    PQCMPS_API_PATH = "/EXT/auth/feature-user/api/primary/mig/qr/prepare"
+from ..helper import ChrHelperProtocol
+from .BaseService import BaseServiceSender
+
+
+class PrimaryQrCodeMigrationPreparationService(ChrHelperProtocol):
+    __REQ_TYPE = 4
+    __RES_TYPE = 4
+    __ENDPOINT = "/EXT/auth/feature-user/api/primary/mig/qr/prepare"
 
     def __init__(self):
-        pass
-        
+        self.__sender = BaseServiceSender(
+            self.client,
+            __class__.__name__,
+            self.__REQ_TYPE,
+            self.__RES_TYPE,
+            self.__ENDPOINT,
+        )
+
     def createQRMigrationSession(self):
+        METHOD_NAME = "createSession"
+        params = [[12, 1, []]]
+        return self.__sender.send(METHOD_NAME, params)
+
+    def sendEncryptedE2EEKey(
+        self, sessionId: str, recoveryKey: bytes, backupBlobPayload: bytes
+    ):
+        METHOD_NAME = "sendEncryptedE2EEKey"
         params = [
-            [12, 1, []]
+            [
+                12,
+                1,
+                [
+                    [11, 1, sessionId],
+                    [12, 2, [[11, 1, recoveryKey], [11, 2, backupBlobPayload]]],
+                ],
+            ]
         ]
-        sqrd = self.generateDummyProtocol(
-            'createSession', params, self.PQCMPS_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(
-            self.PQCMPS_API_PATH ,sqrd, self.PQCMPS_RES_TYPE)
-        
-    def sendEncryptedE2EEKey(self, sessionId: str, recoveryKey: bytes, backupBlobPayload: bytes):
-        params = [
-            [12, 1, [
-                [11, 1, sessionId],
-                [12, 2, [
-                    [11, 1, recoveryKey],
-                    [11, 2, backupBlobPayload] 
-                ]]
-            ]]
-        ]
-        sqrd = self.generateDummyProtocol(
-            'sendEncryptedE2EEKey', params, self.PQCMPS_REQ_TYPE)
-        return self.postPackDataAndGetUnpackRespData(
-            self.PQCMPS_API_PATH ,sqrd, self.PQCMPS_RES_TYPE)
+        return self.__sender.send(METHOD_NAME, params)

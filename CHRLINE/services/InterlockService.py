@@ -6,13 +6,23 @@ Version: 1.0.5
 """
 
 
-class InterlockService(object):
-    InterlockService_REQ_TYPE = 4  # BASE_VAL
-    InterlockService_RES_TYPE = 4  # BASE_VAL
-    InterlockService_API_PATH = None  # BASE_VAL
+from ..helper import ChrHelperProtocol
+from .BaseService import BaseServiceSender
+
+
+class InterlockService(ChrHelperProtocol):
+    __REQ_TYPE = 4
+    __RES_TYPE = 4
+    __ENDPOINT = "/EIS4"
 
     def __init__(self):
-        self.InterlockService_API_PATH = self.LINE_EXTERNAL_INTERLOCK_ENDPOINT
+        self.__sender = BaseServiceSender(
+            self.client,
+            __class__.__name__,
+            self.__REQ_TYPE,
+            self.__RES_TYPE,
+            self.__ENDPOINT,
+        )
 
     def getPlaceSearchProviderList(self, region: str):
         """
@@ -23,12 +33,7 @@ class InterlockService(object):
         """
         METHOD_NAME = "getPlaceSearchProviderList"
         params = [[11, 1, region]]
-        sqrd = self.generateDummyProtocol(
-            METHOD_NAME, params, self.InterlockService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.InterlockService_API_PATH, sqrd, self.InterlockService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)
 
     def getPlaceSearchInfo(
         self,
@@ -54,9 +59,4 @@ class InterlockService(object):
             [4, 6, longitude],  # 121.562759
             [8, 7, radius],
         ]
-        sqrd = self.generateDummyProtocol(
-            METHOD_NAME, params, self.InterlockService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.InterlockService_API_PATH, sqrd, self.InterlockService_RES_TYPE
-        )
+        return self.__sender.send(METHOD_NAME, params)

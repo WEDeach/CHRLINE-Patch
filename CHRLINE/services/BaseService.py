@@ -1,12 +1,20 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Optional
 
 if TYPE_CHECKING:
-    from CHRLINE import CHRLINE
+    from ..client import CHRLINE
 
 
 class BaseService:
     def __init__(self):
         pass
+
+    @property
+    def generateDummyProtocol(self):
+        raise NotImplementedError
+
+    @property
+    def postPackDataAndGetUnpackRespData(self):
+        raise NotImplementedError
 
 
 class BaseServiceStruct:
@@ -22,3 +30,40 @@ class BaseServiceStruct:
 class BaseServiceHandler:
     def __init__(self, client: "CHRLINE") -> None:
         self.cl = client
+        self._logger = self.cl.get_logger("HANDER")
+
+
+class BaseServiceSender(BaseServiceHandler):
+    def __init__(
+        self,
+        client: "CHRLINE",
+        name: str,
+        req_type: int,
+        res_type: int,
+        endpoint: str,
+        *,
+        baseException: Optional[Dict[str, int]] = None,
+    ) -> None:
+        BaseServiceHandler.__init__(self, client)
+
+        self.name = name
+        self.req_type = req_type
+        self.res_type = res_type
+        self.res_type = res_type
+        self.endpoint = endpoint
+        self.base_exception = baseException
+
+    def send(self, method_name: str, params: list, **kwargs):
+        """Send reqest by method name and params."""
+        payloads = {
+            "path": self.endpoint,
+            "ttype": self.res_type,
+            "readWith": f"{self.name}.{method_name}",
+            "baseException": self.base_exception,
+        }
+        payloads.update(kwargs)
+        if "bdata" not in payloads:
+            payloads["bdata"] = self.cl.generateDummyProtocol(
+                method_name, params, self.req_type
+            )
+        return self.cl.postPackDataAndGetUnpackRespData(**payloads)

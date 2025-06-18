@@ -3,6 +3,7 @@ import binascii
 import glob
 import json
 import os
+import ssl
 import struct
 import sys
 import time
@@ -881,6 +882,16 @@ class Models(ChrHelperProtocol):
                     spec.loader.exec_module(module)
             else:
                 raise RuntimeError(f"Can't import {module_name}")
+
+    def issueHttpClient(self, clientType: int = 0, **kwargs):
+        if clientType == 0:
+            return requests.session(**kwargs)
+        elif clientType == 1:
+            return httpx.Client(http2=True, verify=ssl.create_default_context(), **kwargs)
+
+        # ENV: dev
+        from curl_cffi import requests as curl_requests
+        return curl_requests.Session(**kwargs)
 
     def tryReadThriftContainerStruct(self, data, id=0, get_data_len=False):
         _data = {}

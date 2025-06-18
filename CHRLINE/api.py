@@ -2,8 +2,6 @@
 import base64
 import binascii
 
-import httpx
-import requests
 import rsa
 
 from .exceptions import LineServiceException
@@ -91,8 +89,8 @@ class API(
     def __init__(self, forwardedIp=None):
         self.__logger = self.client.get_logger("API")
         self.server = Server()
-        self.req = requests.session()
-        self.req_h2 = httpx.Client(http2=True)
+        self.req = self.client.issueHttpClient()
+        self.req_h2 = self.client.issueHttpClient(1)
         self.server.Headers = {
             "x-line-application": self.client.APP_NAME,
             "x-le": self.client.le,
@@ -512,7 +510,7 @@ class API(
                 3,
                 headers=headers,
                 access_token=qrcode,
-                conn=requests.session(),
+                conn=self.client.issueHttpClient(),
             )
         except Exception as e:
             print(f"[checkQrCodeVerified] {e}")
@@ -569,7 +567,7 @@ class API(
                 3,
                 headers=headers,
                 access_token=qrcode,
-                conn=requests.session(),
+                conn=self.client.issueHttpClient(),
             )
         except Exception as e:
             print(f"[checkPinCodeVerified] {e}")
@@ -690,7 +688,7 @@ class API(
             -3,
             headers=hr,
             access_token=accessSession,
-            conn=requests.session(),
+            conn=self.client.issueHttpClient(),
         )
         if isinstance(r, dict):
             return r["result"]
@@ -704,7 +702,7 @@ class API(
             -3,
             headers=hr,
             access_token=accessSession,
-            conn=requests.session(),
+            conn=self.client.issueHttpClient(),
         )
         if isinstance(r, dict):
             return r["result"]

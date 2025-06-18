@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+from typing import Any, Union
+
 from .base import BaseHelper
 
 
@@ -59,7 +61,7 @@ class SysHelper(BaseHelper):
         return False
 
     @staticmethod
-    def checkAndGetValue(value, *args):
+    def checkAndGetValue(value, *args) -> Union[Any, None]:
         for arg in args:
             if isinstance(value, dict):
                 if arg in value:

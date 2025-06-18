@@ -114,7 +114,7 @@ class BaseBIZApi(BaseBIZ, BIZApiProtocol):
     @property
     def session(self):
         if self.__session is None:
-            self.__session = requests.session()
+            self.__session = self.client.issueHttpClient()
         return self.__session
 
     def url_with_prefix(self, path: str):

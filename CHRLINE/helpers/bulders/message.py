@@ -181,10 +181,14 @@ class MediaMessage(Message):
             meta = base64.b64encode(json.dumps({"message": r}).encode()).decode()
             hrs = {"X-Talk-Meta": meta}
             enc_obj = self.client.downloadObjectForService(
-                oid, savePath, f"{svc}/{sid}", additionalHeaders=hrs
+                oid, None, f"{svc}/{sid}", additionalHeaders=hrs
             )
             keyMaterial = self.client.decryptE2EEMessage(self)["keyMaterial"]
-            return self.client.decryptByKeyMaterial(enc_obj, keyMaterial)
+            obj = self.client.decryptByKeyMaterial(enc_obj, keyMaterial)
+            if savePath is not None:
+                with open(savePath, "wb") as f:
+                    f.write(obj)
+            return obj
         return self.client.downloadObjectForService(
             oid, savePath, f"{svc}/{sid}", additionalHeaders=hrs
         )

@@ -18,7 +18,7 @@ class TalkHelper(BaseHelper):
         pic_oid = None
         video_oid = None
         video_url = None
-        detail = self.client.getProfileCoverDetail(mid)["result"]
+        detail = self.client.biz.myhome_renewal.get_cover_renewal(mid)["result"]
         coverObsInfo = self.client.checkAndGetValue(
             detail, "coverObsInfo"
         )  # detail['coverObsInfo']

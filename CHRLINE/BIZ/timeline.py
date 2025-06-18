@@ -29,7 +29,7 @@ class TimelineBiz(BaseBIZ):
 
     def init_cms_session(self):
         url = "/api/auth/getSessionByIdToken?idToken=" + self.token
-        self.__cmsSession = requests.session()
+        self.__cmsSession = self.client.issueHttpClient()
         res = self.__cmsSession.get(url)
         if res.status_code == 200:
             return self.__cmsSession

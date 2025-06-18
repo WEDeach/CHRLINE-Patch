@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from ..logger import Logger
 
@@ -19,7 +19,7 @@ class BaseHelper:
             raise NotImplementedError
         return self.__client
 
-    def log(self, text: str, debugOnly: bool = False):
+    def log(self, text: Any, debugOnly: bool = False):
         logger = self.get_logger()
 
         if debugOnly:

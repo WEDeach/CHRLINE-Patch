@@ -73,6 +73,7 @@ But if you can use this project to understand the differences in LINE thrift
   - thrift
   - qrcode
   - Image
+  - rich
 
 ## Thanks
 
@@ -86,3 +87,7 @@ This project got their help directly/indirectly, thank them deeply
 - [ぐるぐる](https://github.com/f0reachARR)
 - LINE *GUILTY CROWN LOST XMAS* & *Hey LINE!* 's group members
 - Discord *DemoS*'s group members
+- [Modernfarm 🧧](https://github.com/fakefate14)
+- [よう](https://github.com/terran-yj4)
+- [shion](https://github.com/q0jt)
+- **SLOT**

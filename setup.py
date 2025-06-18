@@ -26,11 +26,11 @@ setuptools.setup(
     'python-axolotl-curve25519',
     'httpx[http2]',
     'h2>=3.2.0',
-    'gevent',
     'cryptography',
     # 'cryptography>=42.0.0',
     'thrift',
     'qrcode',
     'Image',
+    'rich'
   ]
 )

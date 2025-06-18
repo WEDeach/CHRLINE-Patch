@@ -4,8 +4,6 @@ import re
 from typing import Optional
 from urllib.parse import urlparse
 
-import requests
-
 from ..exceptions import LineServiceException
 from .base import BaseHelper
 
@@ -70,7 +68,7 @@ class LiffHelper(BaseHelper):
         else:
             messages = {"messages": [messages]}
         resp = self.client.server.postContent(
-            "https://api.line.me/message/v3/share",
+            self.client.LINE_API_DOMAIN + "/message/v3/share",
             headers=liff_headers,
             data=json.dumps(messages),
         )
@@ -97,7 +95,9 @@ class LiffHelper(BaseHelper):
         if referer is not None:
             hr["referer"] = referer
         r = self.client.server.postContent(
-            "https://access.line.me/dialog/api/permissions", data=data, headers=hr
+            self.client.LINE_ACCESS_DOMAIN + "/dialog/api/permissions",
+            data=data,
+            headers=hr,
         )
         if r.status_code == 200:
             return True
@@ -113,7 +113,7 @@ class LiffHelper(BaseHelper):
             approvedPermission = ["P", "CM", "OC"]
         CHANNEL_ID = None
         CSRF_TOKEN = None
-        session = requests.session()
+        session = self.client.issueHttpClient()
         hr = {
             "X-Line-Access": self.client.authToken,
             "User-Agent": "Mozilla/5.0 (Linux; Android 8.0.1; SAMSUNG Realise/DeachSword; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/56.0.2924.87 Mobile Safari/537.36",
@@ -133,7 +133,7 @@ class LiffHelper(BaseHelper):
             self.log(f"CHANNEL_ID: {CHANNEL_ID}")
             self.log(f"CSRF_TOKEN: {CSRF_TOKEN}")
         if CHANNEL_ID and CSRF_TOKEN:
-            url = "https://access.line.me/oauth2/v2.1/authorize/consent"
+            url = self.client.LINE_ACCESS_DOMAIN + "/oauth2/v2.1/authorize/consent"
             patch_url = urlparse(consentUrl)._replace(query="").geturl()
             if url != patch_url:
                 self.log(f"Using `{patch_url}` to authorize...")
@@ -173,18 +173,23 @@ class LiffHelper(BaseHelper):
             "User-Agent": "Mozilla/5.0 (Linux; Android 8.0.1; SAMSUNG Realise/DeachSword; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/56.0.2924.87 Mobile Safari/537.36",
         }
         r = self.client.server.postContent(
-            "https://access.line.me/v2/oauth/accessToken", data=data, headers=hr
+            self.client.LINE_ACCESS_DOMAIN + "/v2/oauth/accessToken",
+            data=data,
+            headers=hr,
         )
         return r.json()["access_token"]
 
     def getLiffOtt(self, liffId: str, liffAccessToken: str):
-        url = f"https://api.line.me/liff/v2/apps/{liffId}/ott"
+        url = self.client.LINE_API_DOMAIN + f"/liff/v2/apps/{liffId}/ott"
         hr = {"Authorization": f"Bearer {liffAccessToken}"}
         r = self.client.server.getContent(url, headers=hr)
         return r.json()["ott"]
 
     def getLiffShareTargetPickerPage(self, liffId: str, ott: str, liffAccessToken: str):
-        url = f"https://access.line.me/oauth2/v2.1/liff/shareTargetPicker?liffId={liffId}&ott={ott}"
+        url = (
+            self.client.LINE_ACCESS_DOMAIN
+            + f"/oauth2/v2.1/liff/shareTargetPicker?liffId={liffId}&ott={ott}"
+        )
         hr = {"Authorization": f"Bearer {liffAccessToken}"}
         r = self.client.server.getContent(url, headers=hr)
         return r.text
@@ -197,7 +202,10 @@ class LiffHelper(BaseHelper):
         displayCount: int = 200,
         fetchType="friends",
     ):
-        url = f"https://access.line.me/oauth2/v2.1/liff/shareTargetPicker/{fetchType}?pageToken={pageToken}&__csrf={csrfToken}&display={displayCount}"
+        url = (
+            self.client.LINE_ACCESS_DOMAIN
+            + f"/oauth2/v2.1/liff/shareTargetPicker/{fetchType}?pageToken={pageToken}&__csrf={csrfToken}&display={displayCount}"
+        )
 
         # TODO: patch cookies.
 

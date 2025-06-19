@@ -4,6 +4,7 @@ from ..base import BaseBIZApi
 from .internal.Comment import Comment
 from .internal.Hashtag import Hashtag
 from .internal.OtoAccount import OtoAccount
+from .internal.Post import Post
 
 if TYPE_CHECKING:
     from ...client import CHRLINE
@@ -12,8 +13,9 @@ if TYPE_CHECKING:
 class Note(BaseBIZApi):
 
     def __init__(self, client: "CHRLINE", version: int):
-        super().__init__(client, version=version, prefix="/nt")
+        super().__init__(client, version=version, prefix="/ext/note/nt")
 
+        self.post = Post(self)
         self.comment = Comment(self)
         self.oto_account = OtoAccount(self)
         self.hashtag = Hashtag(self)

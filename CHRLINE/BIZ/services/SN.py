@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING, Optional
 
 from ..base import BaseBIZApi
 from .internal.Comment import Comment
+from .internal.Post import Post
 
 if TYPE_CHECKING:
     from ...client import CHRLINE
@@ -12,6 +13,7 @@ class SquareNote(BaseBIZApi):
     def __init__(self, client: "CHRLINE", version: int):
         super().__init__(client, version=version, prefix="/sn")
 
+        self.post = Post(self)
         self.comment = Comment(self)
 
     @property

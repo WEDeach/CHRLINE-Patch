@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Dict, Literal, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union
 
 from .define_typed.Post import TPost, TPostReportReasonCode
 
@@ -83,10 +83,28 @@ class Post:
         )
         return r.json()
 
-    def send_post_to_talk(self, postId: str, *, receiveMids: list):
+    def send_post_to_talk(
+        self,
+        postId: str,
+        *,
+        receiveMids: Optional[List[str]],
+        homeId: Optional[str] = None,
+    ):
+        params = {}
         data = {"postId": postId, "receiveMids": receiveMids}
+        url = self.url("/sendPostToTalk.json")
+        if self.instance.__class__.__name__ == "Timeline":
+            data = {"postId": postId, "receiveMids": receiveMids}
+        else:
+            url = self.url("/share.json")
+            params = {"homeId": homeId}
+            data = {"postId": postId}
         r = self.instance.request(
-            "POST", self.url("/sendPostToTalk.json"), headers=self.headers, json=data
+            "POST",
+            url,
+            headers=self.headers,
+            params=params,
+            json=data,
         )
         return r.json()
 

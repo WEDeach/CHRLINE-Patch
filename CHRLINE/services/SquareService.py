@@ -13,7 +13,7 @@ class SquareService(ChrHelperProtocol):
     SQUARE_EXCEPTION = {"code": 1, "message": 3, "metadata": 2}
 
     def __init__(self):
-        self.__sender = BaseServiceSender(
+        self.__sender = SquareServiceSender(
             self.client,
             __class__.__name__,
             self.__REQ_TYPE,
@@ -1825,3 +1825,12 @@ class SquareServiceStruct(BaseServiceStruct):
     @staticmethod
     def UnsendMessageRequest(squareChatMid: str, messageId: str):
         return __class__.BaseRequest([[11, 2, squareChatMid], [11, 3, messageId]])
+
+
+class SquareServiceSender(BaseServiceSender):
+
+    def send(self, *args, **kwargs):
+        params = args[1]
+        args = list(args)
+        args[1] = BaseServiceStruct.BaseRequest(params)
+        return super().send(*args, **kwargs)

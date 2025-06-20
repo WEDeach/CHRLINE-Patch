@@ -10,6 +10,7 @@ from .models import Models
 from .object import Object
 from .poll import Poll
 from .thrift import Thrift
+from .utils.common import get_opt_env
 
 
 class CHRLINE(
@@ -37,14 +38,16 @@ class CHRLINE(
         phone: Optional[str] = None,
         region: Optional[str] = None,
         forwardedIp: Optional[str] = None,
-        useThrift: bool = False,
-        forceTMCP: bool = False,
+        useThrift: Optional[bool] = None,
+        forceTMCP: Optional[bool] = None,
         savePath: Optional[str] = None,
         os_model: Optional[str] = None,
         rootLogLevel: int = 20,
         logFilterNs: List[str] = [],
         *,
-        genThriftPath: Optional[str] = None
+        genThriftPath: Optional[str] = None,
+        supportTokenV3: Optional[bool] = None,
+        supportSync: Optional[bool] = None,
     ):
         r"""
         Line client for CHRLINE.
@@ -104,16 +107,15 @@ class CHRLINE(
         self.logger.set_root_level(rootLogLevel)
         if logFilterNs:
             self.logger.add_log_fliters(*logFilterNs)
-        Models.__init__(self, savePath)
-        Config.__init__(self, device)
-        self.initAppConfig(device, version, os_name, os_version, os_model)
+        Models.__init__(self, get_opt_env("CHR_SAVE_PATH", value=savePath))
+        Config.__init__(self, device, version, os_name, os_version, os_model, support_v3_token=supportTokenV3, support_sync=supportSync)
+        self.LINE_LANGUAGE = get_opt_env("CHR_API_LANGUAGE", "zh-Hant_TW")
         API.__init__(self, forwardedIp)
-        Thrift.__init__(self)
         self.is_login = False
-        self.use_thrift = useThrift
-        self.force_tmore = forceTMCP
+        self.use_thrift = get_opt_env("CHR_USE_THRIFT", False, value=useThrift)
+        self.force_tmore = get_opt_env("CHR_TMORE_FORCE", False, value=forceTMCP)
         self.LINE_SERVICE_REGION = ""
-        self.path_gen_thrift = genThriftPath
+        self.path_gen_thrift = get_opt_env("CHR_THRIFT_PATH", value=genThriftPath)
         self.readGenThrifts()
         if region is not None:
             self.LINE_SERVICE_REGION = region

@@ -78,7 +78,17 @@ class Config(object):
     SYSTEM_MODEL = "System Product Name"
     MODEL_NAME = "System Product Name"
 
-    def __init__(self, type="CHROME"):
+    def __init__(
+        self,
+        type: str,
+        app_version: Optional[str],
+        os_name: Optional[str],
+        os_version: Optional[str],
+        os_model: Optional[str],
+        *,
+        support_v3_token: Optional[bool] = None,
+        support_sync: Optional[bool] = None,
+    ):
         self.APP_NAME = None
         self.DEVICE_TYPE = type
         self.isSecondary = False
@@ -162,11 +172,25 @@ class Config(object):
             self.APP_VER = ""
             self.SYSTEM_NAME = "visionOS"
             self.SYSTEM_MODEL = "RealityDevice14,1"
+        elif app_version and os_name and os_version:
+            self.APP_VER = app_version
+            self.SYSTEM_NAME = os_name
+            self.SYSTEM_VER = os_version
         else:
-            raise Exception("未知的Device , 請至 config.py 新增")
+            raise Exception(f"You need to specify `app_version`, `os_name` and `os_version` to use this device type: {type}")
         self.APP_TYPE = type
         self.USER_AGENT = "Line/%s" % self.APP_VER
-
+        if support_v3_token is not None:
+            if support_v3_token and type not in self.TOKEN_V3_SUPPORT:
+                self.TOKEN_V3_SUPPORT.append(type)
+            elif type in self.TOKEN_V3_SUPPORT:
+                self.TOKEN_V3_SUPPORT.remove(type)
+        if support_sync is not None:
+            if support_sync and type not in self.SYNC_SUPPORT:
+                self.SYNC_SUPPORT.append(type)
+            elif type in self.SYNC_SUPPORT:
+                self.SYNC_SUPPORT.remove(type)
+        self.initAppConfig(type, app_version, os_name, os_version, os_model)
         self.reloadDomains()
 
     def initAppConfig(

@@ -25,6 +25,7 @@ from .services.MultiProfileService import MultiProfileService
 from .services.PremiumFontService import PremiumFontService
 from .services.PremiumStatusService import PremiumStatusService
 from .services.PrimaryAccountInitService import PrimaryAccountInitService
+from .services.PrimaryAccountReLoginService import PrimaryAccountReLoginService
 from .services.PrimaryAccountSmartSwitchRestorePreparationService import (
     PrimaryAccountSmartSwitchRestorePreparationService,
 )
@@ -144,6 +145,7 @@ class API(
         self.s_premium_status = PremiumStatusService(self.client)
         self.s_seamless = PrimarySeamlessLoginService(self.client)
         self.s_seamless_sec = SecondarySeamlessLoginService(self.client)
+        self.s_relogin = PrimaryAccountReLoginService(self.client)
 
     def requestPwlessLogin(self, phone, region):
         pwless_code = self.client.checkAndGetValue(

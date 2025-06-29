@@ -2036,8 +2036,15 @@ class TalkService(ChrHelperProtocol):
         sht, shd = self.talk_handler.SyncHandler(res)
         if sht == 1:
             return shd
-        elif sht == 2 and isinstance(shd, int):
-            return self.sync(shd, count)
+        elif sht == 2 and isinstance(shd, dict):
+            ex_val = {
+                "revision": revision,
+                "count": count,
+                "fullSyncRequestReason": fullSyncRequestReason,
+                "lastPartialFullSyncs": lastPartialFullSyncs,
+            }
+            ex_val.update(shd)
+            return self.sync(**ex_val)
         raise RuntimeError
 
     def updateChatRoomAnnouncement(
@@ -5732,16 +5739,18 @@ class TalkServiceHandler(BaseServiceHandler):
             if not isinstance(syncRevision, int):
                 raise ValueError
             ll.info(f"got fullSyncResponse: {reasons}")
-            syncParams = {
-                "revision": syncRevision
-            }
+            syncParams = {"revision": syncRevision}
         elif partialFullSyncResponse is not None:
             ll.info(f"got partialFullSyncResponse: {partialFullSyncResponse}")
-            targetCategories = cl.checkAndGetValue(partialFullSyncResponse, "targetCategories", 1)
+            targetCategories = cl.checkAndGetValue(
+                partialFullSyncResponse, "targetCategories", 1
+            )
             syncParams = {
                 "revision": cl.revision,
-                "lastPartialFullSyncs": targetCategories
+                "lastPartialFullSyncs": targetCategories,
             }
         else:
-            raise EOFError(f"[SyncHandler] SyncResponse must include one of the response about operation / full sync / partial full sync: {res}")
+            raise EOFError(
+                f"[SyncHandler] SyncResponse must include one of the response about operation / full sync / partial full sync: {res}"
+            )
         return 2, syncParams

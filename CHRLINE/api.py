@@ -22,6 +22,7 @@ from .services.InterlockService import InterlockService
 from .services.LiffService import LiffService
 from .services.LoginService import LoginService
 from .services.MultiProfileService import MultiProfileService
+from .services.PasswordUpdateService import PasswordUpdateService
 from .services.PremiumFontService import PremiumFontService
 from .services.PremiumStatusService import PremiumStatusService
 from .services.PrimaryAccountInitService import PrimaryAccountInitService
@@ -149,6 +150,7 @@ class API(
         self.s_seamless = PrimarySeamlessLoginService(self.client)
         self.s_seamless_sec = SecondarySeamlessLoginService(self.client)
         self.s_relogin = PrimaryAccountReLoginService(self.client)
+        self.s_pwd_update = PasswordUpdateService(self.client)
 
     def requestPwlessLogin(self, phone, region):
         pwless_code = self.client.checkAndGetValue(

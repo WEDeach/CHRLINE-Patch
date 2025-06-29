@@ -19,15 +19,48 @@ class AuthService(ChrHelperProtocol):
             self.__ENDPOINT,
         )
 
-    def openAuthSession(self, metaData: Dict[str, str] = {}):
-        METHOD_NAME = "openAuthSession"
-        request = [[13, 1, [11, 11, metaData]]]
-        params = [[12, 2, request]]
+    def confirmIdentifier(
+        self,
+        authSessionId: str,
+        verificationCode: str,
+        metaData: Dict[str, str] = {},
+        forceRegistration: Optional[bool] = None,
+    ):
+        METHOD_NAME = "confirmIdentifier"
+        confirmationRequest = [
+            [13, 1, [11, 11, metaData]],
+            [2, 2, forceRegistration],
+            [11, 3, verificationCode],
+        ]
+        request = [
+            [12, 5, confirmationRequest],
+        ]
+        params = [[11, 2, authSessionId], [12, 3, request]]
         return self.__sender.send(METHOD_NAME, params)
 
-    def getAuthRSAKey(self, authSessionId: str, identityProvider: int = 1):
-        METHOD_NAME = "getAuthRSAKey"
-        params = [[11, 2, authSessionId], [8, 3, identityProvider]]
+    def removeIdentifier(
+        self,
+        authSessionId: str,
+        cipherKeyId: str,
+        cipherText: str,
+        identityProvider: int = 1,
+    ):
+        METHOD_NAME = "removeIdentifier"
+        request = [
+            [8, 2, identityProvider],
+            [11, 3, cipherKeyId],
+            [11, 4, cipherText],
+        ]
+        params = [[11, 2, authSessionId], [12, 3, request]]
+        return self.__sender.send(METHOD_NAME, params)
+
+    def resendIdentifierConfirmation(
+        self,
+        authSessionId: str,
+    ):
+        METHOD_NAME = "resendIdentifierConfirmation"
+        request = []
+        params = [[11, 2, authSessionId], [12, 3, request]]
         return self.__sender.send(METHOD_NAME, params)
 
     def setIdentifier(
@@ -66,55 +99,52 @@ class AuthService(ChrHelperProtocol):
         params = [[11, 2, authSessionId], [12, 3, request]]
         return self.__sender.send(METHOD_NAME, params)
 
-    def resendIdentifierConfirmation(
-        self,
-        authSessionId: str,
-    ):
-        METHOD_NAME = "resendIdentifierConfirmation"
-        request = []
-        params = [[11, 2, authSessionId], [12, 3, request]]
+    def getAuthRSAKey(self, authSessionId: str, identityProvider: int = 1):
+        METHOD_NAME = "getAuthRSAKey"
+        params = [[11, 2, authSessionId], [8, 3, identityProvider]]
         return self.__sender.send(METHOD_NAME, params)
 
-    def confirmIdentifier(
-        self,
-        authSessionId: str,
-        verificationCode: str,
-        metaData: Dict[str, str] = {},
-        forceRegistration: Optional[bool] = None,
-    ):
-        METHOD_NAME = "confirmIdentifier"
-        confirmationRequest = [
-            [13, 1, [11, 11, metaData]],
-            [2, 2, forceRegistration],
-            [11, 3, verificationCode],
-        ]
-        request = [
-            [12, 5, confirmationRequest],
-        ]
-        params = [[11, 2, authSessionId], [12, 3, request]]
+    def issueTokenForAccountMigrationSettings(self, enforce: bool):
+        METHOD_NAME = "issueTokenForAccountMigrationSettings"
+        params = [[2, 2, enforce]]
         return self.__sender.send(METHOD_NAME, params)
 
-    def removeIdentifier(
-        self,
-        authSessionId: str,
-        cipherKeyId: str,
-        cipherText: str,
-        identityProvider: int = 1,
-    ):
-        METHOD_NAME = "removeIdentifier"
-        request = [
-            [8, 2, identityProvider],
-            [11, 3, cipherKeyId],
-            [11, 4, cipherText],
-        ]
-        params = [[11, 2, authSessionId], [12, 3, request]]
-        return self.__sender.send(METHOD_NAME, params)
-
-    def getClovaAppToken(self, authSessionId, cipherText, metaData={}):
-        METHOD_NAME = "getClovaAppToken"
+    def issueV3TokenForPrimary(self, udid: str, systemDisplayName: str, modelName: str):
+        METHOD_NAME = "issueV3TokenForPrimary"
         params = [
-            [11, 2, authSessionId],
-            [12, 3, [[8, 1, 2], [13, 2, [11, 11, metaData]], [11, 3, cipherText]]],
+            [12, 1, [[11, 1, udid], [11, 2, systemDisplayName], [11, 3, modelName]]]
+        ]
+        return self.__sender.send(METHOD_NAME, params)
+
+    def openAuthSession(self, metaData: Dict[str, str] = {}):
+        METHOD_NAME = "openAuthSession"
+        request = [[13, 1, [11, 11, metaData]]]
+        params = [[12, 2, request]]
+        return self.__sender.send(METHOD_NAME, params)
+
+    def respondE2EELoginRequest(
+        self,
+        verifier,
+        keyId,
+        keyData,
+        createdTime,
+        encryptedKeyChain,
+        hashKeyChain,
+        errorCode: int = 95,
+    ):
+        METHOD_NAME = "respondE2EELoginRequest"
+        publicKey = [
+            [8, 1, 1],  # version
+            [8, 2, keyId],
+            [11, 4, keyData],
+            [10, 5, createdTime],
+        ]
+        params = [
+            [11, 1, verifier],
+            [12, 2, publicKey],
+            [11, 3, encryptedKeyChain],
+            [11, 4, hashKeyChain],
+            [8, 5, errorCode],
         ]
         return self.__sender.send(METHOD_NAME, params)
 
@@ -166,91 +196,14 @@ class AuthService(ChrHelperProtocol):
         ]
         return self.__sender.send(METHOD_NAME, params)
 
-    def confirmE2EELogin(self, verifier, deviceSecret):
-        METHOD_NAME = "confirmE2EELogin"
-        params = [
-            [11, 1, verifier],
-            [11, 2, deviceSecret],
-        ]
-        return self.__sender.send(METHOD_NAME, params)
-
-    def issueV3TokenForPrimary(self, udid: str, systemDisplayName: str, modelName: str):
-        METHOD_NAME = "issueV3TokenForPrimary"
-        params = [
-            [12, 1, [[11, 1, udid], [11, 2, systemDisplayName], [11, 3, modelName]]]
-        ]
-        return self.__sender.send(METHOD_NAME, params)
-
     def logoutZ(self):
         METHOD_NAME = "logoutZ"
         params = []
         return self.__sender.send(METHOD_NAME, params)
 
-    def issueTokenForAccountMigration(self):
-        """
-        AUTO_GENERATED_CODE! DONT_USE_THIS_FUNC!!
-        """
-        raise Exception("issueTokenForAccountMigration is not implemented")
-        params = []
-        sqrd = self.generateDummyProtocol(
-            "issueTokenForAccountMigration", params, self.AuthService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.AuthService_API_PATH, sqrd, self.AuthService_RES_TYPE
-        )
-
-    def updatePassword(
-        self,
-        authSessionId: str,
-        cipherKeyId: str,
-        cipherText: str,
-        identityProvider: int = 1,
-        metaData: Dict[str, str] = {},
-    ):
-        METHOD_NAME = "updatePassword"
-        request = [
-            [13, 1, [11, 11, metaData]],
-            [8, 2, identityProvider],
-            [11, 3, cipherKeyId],
-            [11, 4, cipherText],
-        ]
-        params = [[11, 2, authSessionId], [12, 3, request]]
-        return self.__sender.send(METHOD_NAME, params)
-
-    def respondE2EELoginRequest(
-        self,
-        verifier,
-        keyId,
-        keyData,
-        createdTime,
-        encryptedKeyChain,
-        hashKeyChain,
-        errorCode: int = 95,
-    ):
-        METHOD_NAME = "respondE2EELoginRequest"
-        publicKey = [
-            [8, 1, 1],  # version
-            [8, 2, keyId],
-            [11, 4, keyData],
-            [10, 5, createdTime],
-        ]
-        params = [
-            [11, 1, verifier],
-            [12, 2, publicKey],
-            [11, 3, encryptedKeyChain],
-            [11, 4, hashKeyChain],
-            [8, 5, errorCode],
-        ]
-        return self.__sender.send(METHOD_NAME, params)
-
     def logoutV2(self):
         METHOD_NAME = "logoutV2"
         params = []
-        return self.__sender.send(METHOD_NAME, params)
-
-    def establishE2EESession(self, clientPublicKey: str):
-        METHOD_NAME = "establishE2EESession"
-        params = [[12, 1, [[11, 1, clientPublicKey]]]]
         return self.__sender.send(METHOD_NAME, params)
 
     def releaseLockScreen(self, authSessionId: str, cipherKeyId: str, cipherText: str):
@@ -272,19 +225,6 @@ class AuthService(ChrHelperProtocol):
         ]
         return self.__sender.send(METHOD_NAME, params)
 
-    def normalizePhoneNumber(self):
-        """
-        AUTO_GENERATED_CODE! DONT_USE_THIS_FUNC!!
-        """
-        raise Exception("normalizePhoneNumber is not implemented")
-        params = []
-        sqrd = self.generateDummyProtocol(
-            "normalizePhoneNumber", params, self.AuthService_REQ_TYPE
-        )
-        return self.postPackDataAndGetUnpackRespData(
-            self.AuthService_API_PATH, sqrd, self.AuthService_RES_TYPE
-        )
-
     def exchangeKey(
         self, authSessionId: str, authKeyVersion: int, publicKey: str, nonce: str
     ):
@@ -301,30 +241,4 @@ class AuthService(ChrHelperProtocol):
                 ],
             ],
         ]
-        return self.__sender.send(METHOD_NAME, params)
-
-    def setIdentifierAndPassword(
-        self,
-        authSessionId: str,
-        identityProvider: int,
-        cipherKeyId: str,
-        cipherText: str,
-        metaData: Dict[str, str] = {},
-    ):
-        METHOD_NAME = "setIdentifierAndPassword"
-        request = [
-            [13, 1, [11, 11, metaData]],
-            [8, 2, identityProvider],
-            [11, 3, cipherKeyId],
-            [11, 4, cipherText],
-        ]
-        params = [
-            [11, 2, authSessionId],
-            [12, 3, request],
-        ]
-        return self.__sender.send(METHOD_NAME, params)
-
-    def issueTokenForAccountMigrationSettings(self, enforce: bool):
-        METHOD_NAME = "issueTokenForAccountMigrationSettings"
-        params = [[2, 2, enforce]]
         return self.__sender.send(METHOD_NAME, params)

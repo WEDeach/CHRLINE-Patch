@@ -39,6 +39,7 @@ from .services.PrimaryQrCodeMigrationPreparationService import (
     PrimaryQrCodeMigrationPreparationService,
 )
 from .services.PrimarySeamlessLoginService import PrimarySeamlessLoginService
+from .services.RegistrationAuthService import RegistrationAuthService
 from .services.RelationService import RelationService
 from .services.SecondaryPwlessLoginPermitNoticeService import (
     SecondaryPwlessLoginPermitNoticeService,
@@ -84,6 +85,7 @@ class API(
     CoinService,
     ShopCollectionService,
     PremiumFontService,
+    RegistrationAuthService,
 ):
     _msgSeq = 0
 
@@ -139,6 +141,7 @@ class API(
         CoinService.__init__(self)
         ShopCollectionService.__init__(self)
         PremiumFontService.__init__(self)
+        RegistrationAuthService.__init__(self)
         self.s_smart_switch = PrimaryAccountSmartSwitchRestorePreparationService(self)
         self.s_smart_switch_sec = PrimaryAccountSmartSwitchRestoreService(self)
         self.s_multi_profile = MultiProfileService(self.client)

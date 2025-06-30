@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from ..helper import ChrHelperProtocol
-from .BaseService import BaseServiceSender
+from .BaseService import BaseServiceSender, BaseServiceStruct
 
 
 class LoginService(ChrHelperProtocol):
@@ -52,6 +52,7 @@ class LoginService(ChrHelperProtocol):
             [2, 4, autoLoginIsRequired],
             [11, 5, secureCode],
         ]
+        params = BaseServiceStruct.BaseRequest(params)
         return self.__sender.send(METHOD_NAME, params)
 
     def createQrCodeForSecure(self, qrcode: str):
@@ -63,4 +64,5 @@ class LoginService(ChrHelperProtocol):
         """
         METHOD_NAME = "createQrCodeForSecure"
         params = [[11, 1, qrcode]]
+        params = BaseServiceStruct.BaseRequest(params)
         return self.__sender.send(METHOD_NAME, params)

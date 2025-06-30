@@ -430,11 +430,6 @@ class API(
         if sqr is None:
             raise ValueError("sqr is nil")
         qr4s = self.createQrCodeForSecure(sqr)
-        if not isinstance(qr4s, str):
-            raise ValueError(
-                f"requestSQR3 failed! can't read sqr on `createQrCodeForSecure`: {qr4s}"
-            )
-        self.client.log(qr4s, log4Debug)
         url = self.client.checkAndGetValue(qr4s, "callbackUrl", 1)
         nonce = self.client.checkAndGetValue(qr4s, "nonce", 4)
         if nonce is None:
@@ -450,7 +445,7 @@ class API(
                 self.verifyCertificate(sqr, self.client.getSqrCert())
             except Exception as _:
                 c = self.createPinCode(sqr)
-                yield f"請輸入pincode: {c}"
+                yield f"Enter Pincode: {c}"
                 self.checkPinCodeVerified(sqr)
             try:
                 e = self.qrCodeLoginV2ForSecure(

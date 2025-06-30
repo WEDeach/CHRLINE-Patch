@@ -230,7 +230,7 @@ class Config(object):
             _desktop = "MAC"
             if self.APP_TYPE == "DESKTOPWIN":
                 _desktop = "WINDOWS"
-            self.USER_AGENT = f"DESKTOP:{_desktop}:{self.SYSTEM_NAME}({self.APP_VER})"
+            self.USER_AGENT = f"DESKTOP:{_desktop}:{self.SYSTEM_VER}({self.APP_VER})"
         else:
             self.USER_AGENT = (
                 f"Line/{self.APP_VER} {self.SYSTEM_MODEL} {self.SYSTEM_VER}"

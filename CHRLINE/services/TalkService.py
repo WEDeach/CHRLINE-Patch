@@ -1,9 +1,11 @@
 ﻿# -*- coding: utf-8 -*-
+import sys
 from random import randint
 from typing import TYPE_CHECKING, Any, ByteString, List, Optional, Union
 
 import httpx
 
+from ..exceptions import LineServiceException
 from ..helper import ChrHelperProtocol
 from ..helpers.bulders.message import Message as WrappedMessage
 from ..serializers.DummyProtocol import DummyThrift
@@ -13,15 +15,16 @@ from .BaseService import (
     BaseServiceStruct,
 )
 
-try:
-    from ..exceptions import LineServiceException
-    from .thrift.ttypes import TalkException
-except Exception as _:
-    pass
-
 if TYPE_CHECKING:
     from ..client import CHRLINE
+    from .thrift import ttypes
 
+def reload_ttypes(func):
+    def wrapper(*args, **kwargs):
+        # Sync ttypes module.
+        globals()["ttypes"] = sys.modules[f"{__package__}.custom_thrifts.ttypes"]
+        return func(*args, **kwargs)
+    return wrapper
 
 class TalkService(ChrHelperProtocol):
     __REQ_TYPE = 4
@@ -43,6 +46,7 @@ class TalkService(ChrHelperProtocol):
         )
         self._logger.info("INIT!")
 
+    @reload_ttypes
     def sendMessage(
         self,
         to: str,
@@ -108,7 +112,7 @@ class TalkService(ChrHelperProtocol):
             )
             message.append([8, 24, relatedMessageServiceCode])
         params = [
-            [8, 1, self.client.getCurrReqId()],
+            [8, 1, 0],
             [12, 2, message],
         ]
         if TO_TYPE == 4:
@@ -146,10 +150,10 @@ class TalkService(ChrHelperProtocol):
                     "readWith": f"{SERVICE_NAME}.{METHOD_NAME}",
                 },
             )
-        except (LineServiceException, TalkException) as e:
+        except (LineServiceException, ttypes.TalkException) as e:
             if getattr(e, "code") in [82, 99]:
                 if autoE2EE:
-                    self._logger.warn("auto encrypt msg for E2EE...")
+                    self._logger.warning("auto encrypt msg for E2EE...")
                     return self.sendMessageWithE2EE(
                         to, text, contentType, contentMetadata, relatedMessageId
                     )
@@ -228,6 +232,7 @@ class TalkService(ChrHelperProtocol):
             to=to, text="", contentMetadata=contentMetadata, contentType=9
         )
 
+    @reload_ttypes
     def sendMessageWithE2EE(
         self,
         to,
@@ -253,10 +258,10 @@ class TalkService(ChrHelperProtocol):
             return self.sendMessageWithChunks(
                 to, chunk, contentType, contentMetadata, relatedMessageId
             )
-        except (LineServiceException, TalkException) as e:
+        except (LineServiceException, ttypes.TalkException) as e:
             e_code = getattr(e, "code")
             if e_code == 84 and not renewKey:
-                self._logger.warn(f"renew E2EE key for '{to}'...")
+                self._logger.warning(f"renew E2EE key for '{to}'...")
                 return self.sendMessageWithE2EE(
                     to,
                     text,
@@ -282,6 +287,7 @@ class TalkService(ChrHelperProtocol):
             autoE2EE=False,
         )
 
+    @reload_ttypes
     def sendCompactMessage(
         self, to: str, text: Optional[str], chunks: Optional[list] = None
     ):
@@ -318,7 +324,7 @@ class TalkService(ChrHelperProtocol):
             return self.client.postPackDataAndGetUnpackRespData(
                 ep, sqrd, -7, headers=hr
             )
-        except (LineServiceException, TalkException) as e:
+        except (LineServiceException, ttypes.TalkException) as e:
             if getattr(e, "code") in [82, 99]:
                 return self.sendCompactE2EEMessage(to, text)
             raise e

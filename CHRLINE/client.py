@@ -136,7 +136,7 @@ class CHRLINE(
                     sqr_func = self.requestSQR3
                 for b in sqr_func():
                     print(b)
-        if self.authToken:
+        if not noLogin and self.authToken:
             self.initAll()
 
     def initAll(self):

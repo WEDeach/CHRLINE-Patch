@@ -10,7 +10,8 @@ import time
 from base64 import b64encode
 from hashlib import md5
 from importlib.util import module_from_spec, spec_from_file_location
-from typing import Any, Optional, Union
+from types import ModuleType
+from typing import TYPE_CHECKING, Any, Optional, Union
 from urllib.parse import quote
 
 import axolotl_curve25519 as curve
@@ -33,9 +34,11 @@ from .serializers.DummyProtocol import (
     DummyProtocolSerializer,
     DummyThrift,
 )
-from .services.thrift.ttypes import TalkException
 from .utils.patchs import p_patch_all
 
+if TYPE_CHECKING:
+    from .services.thrift import ttypes
+    
 
 class Models(ChrHelperProtocol):
     def __init__(self, savePath):
@@ -622,7 +625,7 @@ class Models(ChrHelperProtocol):
                         _err["code"] = e.code
                         _err["message"] = e.message
                         _err["metadata"] = e.metadata
-                    elif isinstance(e, TalkException):
+                    elif isinstance(e, ttypes.TalkException):
                         _err["code"] = getattr(e, "code")
                         _err["message"] = getattr(e, "reason")
                         _err["metadata"] = getattr(e, "parameterMap")
@@ -855,12 +858,19 @@ class Models(ChrHelperProtocol):
             }
 
     def readGenThrifts(self):
-        path = os.path.join(os.path.dirname(__file__), "services", "thrift", "*.py")
-        if self.client.path_gen_thrift is not None:
-            path = os.path.join(self.client.path_gen_thrift, "*.py")
+        path = os.path.join(os.path.dirname(__file__), "services", "thrift")
+        if self.client.path_gen_thrift is not None and self.client.path_gen_thrift.strip() != "":
+            path = self.client.path_gen_thrift
             self.__logger.info(f"Read GenThrifts from '{self.client.path_gen_thrift}'...")
 
-        module_files = glob.glob(path)
+        module_files = glob.glob(os.path.join(path, "*.py"))
+
+        # Fixed static name to solve import error
+        # https://gemini.google.com/share/3daea3d8f2e0
+        package_name =  f"{__package__}.services.custom_thrifts"
+        package = ModuleType(package_name)
+        package.__path__ = [path]
+        sys.modules[package_name] = package
 
         # https://github.com/DeachSword/MakiyuiSoul/blob/187186f910939bdfe4a38cd5b82a07ab4f30971c/__init__.py
         for filepath in module_files:
@@ -868,18 +878,25 @@ class Models(ChrHelperProtocol):
             if filename == "__init__.py":
                 continue
             module_name = filename[:-3]
+            spec_name = f"{package_name}.{module_name}"
+            
+            if spec_name in sys.modules:
+                # Skip if already imported
+                # and put it to globals :)
+                globals()[module_name] = sys.modules[spec_name]
+                continue
 
             spec = spec_from_file_location(
-                module_name,
+                spec_name,
                 filepath,
-                submodule_search_locations=[os.path.dirname(filepath)],
             )
             if spec:
                 module = module_from_spec(spec)
-                sys.modules[module_name] = module
+                sys.modules[spec_name] = module
                 globals()[module_name] = module
                 if spec.loader:
                     spec.loader.exec_module(module)
+
             else:
                 raise RuntimeError(f"Can't import {module_name}")
 

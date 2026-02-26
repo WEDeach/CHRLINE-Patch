@@ -1,6 +1,6 @@
 import base64
 import json
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 
 from ...serializers.DummyProtocol import DummyThrift
 
@@ -30,6 +30,9 @@ MessageStruct = [
     #
     # [27, 15, "reactions", []],
 ]
+
+TMentionData = List[Tuple[str, str]]
+TMention = Dict[str, TMentionData]
 
 
 class MessageUserData:
@@ -62,7 +65,6 @@ class MessageUserData:
 
 
 class Message(DummyThrift):
-
     def __new__(cls, *args, **kwargs):
         ins = kwargs["ins"]
         if isinstance(ins, dict):
@@ -121,7 +123,6 @@ class Message(DummyThrift):
 
 
 class TextMessage(Message):
-
     @property
     def text(self):
         t = self[10]
@@ -136,9 +137,26 @@ class TextMessage(Message):
     def isE2EE(self):
         return isinstance(self[20], list) and len(self[20]) > 0
 
+    def mentions(self, midOnly: bool = False):
+        """Get mentions."""
+        # you can also use getMentioneesByMsgData just for mid only.
+        if midOnly:
+            return self.client.getMentioneesByMsgData(self)
+        metadata = self[18]
+        res: TMention = {}
+        if metadata is not None and "MENTION" in metadata:
+            mendata = json.loads(metadata["MENTION"])
+            for mesdata in mendata.get("MENTIONEES", {}):
+                if "M" in mesdata:
+                    mid = mesdata["M"]
+                    ms, me = mesdata.get("S", -1), mesdata.get("E", -1)
+                    if mid not in res:
+                        res[mid] = []
+                    res[mid].append((ms, me))
+        return res
+
 
 class MediaMessage(Message):
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 

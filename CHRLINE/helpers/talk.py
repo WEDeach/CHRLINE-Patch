@@ -150,10 +150,9 @@ class TalkHelper(BaseHelper):
         if b is not None:
             if "MENTION" in b:
                 c = json.loads(b["MENTION"])
-                print(c)
                 for _m in c["MENTIONEES"]:
-                    print(_m["M"])
-                    a.append(_m["M"])
+                    if "M" in _m:
+                        a.append(_m["M"])
         return a
 
     def genMentionData(self, mentions: List[Dict[str, Any]]):

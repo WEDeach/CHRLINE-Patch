@@ -389,7 +389,7 @@ class DummyThrift:
         d.update(self.dd_loc())
         return d
 
-    def __getitem__(self, index):
+    def __getitem__(self, index, default=None):
         # PRIORITY: thrift > dummy
         r = self.thrift_ins
         if r is not None:
@@ -400,8 +400,8 @@ class DummyThrift:
                         continue
                     fid, ftype, fname, fttypes, _ = spec
                     if fid == index:
-                        return getattr(r, fname)
-        return getattr(self, f"val_{index}")
+                        return getattr(r, fname, default)
+        return getattr(self, f"val_{index}", default)
 
     def __iter__(self):
         return iter(self.dd().items())

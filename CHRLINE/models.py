@@ -35,6 +35,7 @@ from .serializers.DummyProtocol import (
     DummyThrift,
 )
 from .utils.patchs import p_patch_all
+from .utils.reqlog import log_request
 
 if TYPE_CHECKING:
     from .services.thrift import ttypes
@@ -1123,6 +1124,7 @@ def thrift2dummy(a):
         raise ValueError(f"[thrift2dummy] not support `{type(a)}`: {a}")
 
 
+@log_request
 def doLoopReq(
     req, data, currCount: int = 0, maxRetryCount: int = 5, retryTimeDelay: int = 8
 ):

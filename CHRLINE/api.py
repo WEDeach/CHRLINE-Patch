@@ -12,6 +12,7 @@ from .services.AccountAuthFactorEapConnectService import (
 )
 from .services.AuthService import AuthService
 from .services.BuddyService import BuddyService
+from .services.CalendarService import CalendarService
 from .services.CallService import CallService
 from .services.ChannelService import ChannelService
 from .services.ChatAppService import ChatAppService
@@ -151,8 +152,9 @@ class API(
         self.s_seamless_sec = SecondarySeamlessLoginService(self.client)
         self.s_relogin = PrimaryAccountReLoginService(self.client)
         self.s_pwd_update = PasswordUpdateService(self.client)
+        self.s_calendar = CalendarService(self.client)
 
-    def requestPwlessLogin(self, phone, region):
+    def requestPwlessLogin(self, phone, region, autoLoginIsRequired=True):
         pwless_code = self.client.checkAndGetValue(
             self.createPwlessSession(phone, region), 1, "val_1"
         )
@@ -173,7 +175,7 @@ class API(
         self.checkPaakAuthenticated(pwless_code)
         ek = self.getE2eeKey(pwless_code)
         try:
-            loginInfo = self.pwlessLoginV2(pwless_code)
+            loginInfo = self.pwlessLoginV2(pwless_code, autoLoginIsRequired)
             cert = self.client.checkAndGetValue(loginInfo, 2, "val_2")
             tokenInfo = self.client.checkAndGetValue(loginInfo, 3, "val_3")
             token = self.client.checkAndGetValue(tokenInfo, 1, "val_1")
@@ -192,7 +194,7 @@ class API(
             self.client.decodeE2EEKeyV1(metadata, secret, mid)
         return True
 
-    def requestEmailLogin(self, email, pw, e2ee=True):
+    def requestEmailLogin(self, email, pw, e2ee=True, autoLoginIsRequired=False):
         rsaKey = self.getRSAKeyInfo()
         keynm = self.client.checkAndGetValue(rsaKey, 1, "val_1")
         nvalue = self.client.checkAndGetValue(rsaKey, 2, "val_2")
@@ -224,6 +226,7 @@ class API(
             "secret": _secret,
             "deviceName": self.client.SYSTEM_MODEL,
             "calledName": "loginZ",
+            "autoLoginIsRequired": autoLoginIsRequired,
         }
         if not e2ee:
             _req["secret"] = None
@@ -234,7 +237,7 @@ class API(
             if e.code == 89:
                 if not e2ee:
                     raise e
-                return self.requestEmailLogin(email, pw, False)
+                return self.requestEmailLogin(email, pw, False, autoLoginIsRequired)
             raise e
         if self.client.checkAndGetValue(res, 1, "val_1") is None:
             verifier = self.client.checkAndGetValue(res, 3, "val_3")
@@ -266,7 +269,7 @@ class API(
         print(f"AuthToken: {self.authToken}")
         return True
 
-    def requestEmailLoginV2(self, email, pw):
+    def requestEmailLoginV2(self, email, pw, autoLoginIsRequired=False):
         rsaKey = self.getRSAKeyInfo()
         keynm = self.client.checkAndGetValue(rsaKey, 1, "val_1")
         nvalue = self.client.checkAndGetValue(rsaKey, 2, "val_2")
@@ -299,6 +302,7 @@ class API(
                 _secret,
                 deviceName=self.client.SYSTEM_MODEL,
                 cert=certificate,
+                autoLoginIsRequired=autoLoginIsRequired,
             )
         except LineServiceException as e:
             if e.code == 89:
@@ -345,7 +349,7 @@ class API(
         print(f"RefreshToken: {refreshToken}")
         return True
 
-    def requestSQR(self, isSelf=True):
+    def requestSQR(self, isSelf=True, autoLoginIsRequired=True):
         sqr = self.client.checkAndGetValue(self.createSession(), 1, "val_1")
         url = self.client.checkAndGetValue(self.createQrCode(sqr), 1, "val_1")
         if sqr is None:
@@ -362,7 +366,7 @@ class API(
                 c = self.client.checkAndGetValue(self.createPinCode(sqr), 1, "val_1")
                 yield f"請輸入pincode: {c}"
                 self.checkPinCodeVerified(sqr)
-            e = self.qrCodeLogin(sqr, secret)
+            e = self.qrCodeLogin(sqr, secret, autoLoginIsRequired)
             if isSelf:
                 self.authToken = e
                 print(f"AuthToken: {self.authToken}")
@@ -419,7 +423,7 @@ class API(
             raise Exception("can not check pin code, try again?")
         raise Exception("can not check qr code, try again?")
 
-    def requestSQR3(self, isSelf=True):
+    def requestSQR3(self, isSelf=True, autoLoginIsRequired=True):
         """
         Request Secondary QrCode Login for secure.
 
@@ -449,7 +453,11 @@ class API(
                 self.checkPinCodeVerified(sqr)
             try:
                 e = self.qrCodeLoginV2ForSecure(
-                    sqr, self.client.MODEL_NAME, self.client.USERDOMAIN, nonce
+                    sqr,
+                    self.client.MODEL_NAME,
+                    self.client.USERDOMAIN,
+                    nonce,
+                    autoLoginIsRequired,
                 )
                 self.client.log(e, log4Debug)
                 cert = self.client.checkAndGetValue(e, "certificate", 1)
@@ -503,7 +511,8 @@ class API(
         ]
         sqrd = self.client.generateDummyProtocol("checkQrCodeVerified", params, 3)
         headers = self.server.additionalHeaders(
-            self.server.Headers, {"x-lst": "150000"}  # timeout
+            self.server.Headers,
+            {"x-lst": "150000"},  # timeout
         )
         try:
             self.client.postPackDataAndGetUnpackRespData(
@@ -560,7 +569,8 @@ class API(
         ]
         sqrd = self.client.generateDummyProtocol("checkPinCodeVerified", params, 3)
         headers = self.server.additionalHeaders(
-            self.server.Headers, {"x-lst": "150000"}  # timeout
+            self.server.Headers,
+            {"x-lst": "150000"},  # timeout
         )
         try:
             self.client.postPackDataAndGetUnpackRespData(
@@ -653,12 +663,16 @@ class API(
         cert=None,
         verifier=None,
         calledName="loginV2",
+        autoLoginIsRequired=False,
     ):
         loginType = 2
         if secret is None:
             loginType = 0
         if verifier is not None:
             loginType = 1
+        self.__logger.info(
+            f"[{calledName}] autoLoginIsRequired: {autoLoginIsRequired}, deviceName: {deviceName}"
+        )
         params = [
             [
                 12,
@@ -668,7 +682,7 @@ class API(
                     [8, 2, 1],  # provider
                     [11, 3, keynm],
                     [11, 4, encData],
-                    [2, 5, 0],
+                    [2, 5, autoLoginIsRequired],
                     [11, 6, ""],
                     [11, 7, deviceName],
                     [11, 8, cert],

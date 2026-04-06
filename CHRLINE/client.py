@@ -1,5 +1,5 @@
 from os import system
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 
 from .api import API
 from .BIZ.manager import BizManager
@@ -44,10 +44,12 @@ class CHRLINE(
         os_model: Optional[str] = None,
         rootLogLevel: int = 20,
         logFilterNs: List[str] = [],
+        logFileWithLevel: Optional[List[Tuple[str, int]]] = None,
         *,
         genThriftPath: Optional[str] = None,
         supportTokenV3: Optional[bool] = None,
         supportSync: Optional[bool] = None,
+        autoLoginIsRequired: bool = True,
     ):
         r"""
         Line client for CHRLINE.
@@ -107,8 +109,20 @@ class CHRLINE(
         self.logger.set_root_level(rootLogLevel)
         if logFilterNs:
             self.logger.add_log_fliters(*logFilterNs)
+        if logFileWithLevel is not None:
+            for logFileName, level in logFileWithLevel:
+                self.logger.add_file_handler(logFileName, level=level)
         Models.__init__(self, get_opt_env("CHR_SAVE_PATH", value=savePath))
-        Config.__init__(self, device, version, os_name, os_version, os_model, support_v3_token=supportTokenV3, support_sync=supportSync)
+        Config.__init__(
+            self,
+            device,
+            version,
+            os_name,
+            os_version,
+            os_model,
+            support_v3_token=supportTokenV3,
+            support_sync=supportSync,
+        )
         self.LINE_LANGUAGE = get_opt_env("CHR_API_LANGUAGE", "zh-Hant_TW")
         API.__init__(self, forwardedIp)
         self.is_login = False
@@ -124,17 +138,21 @@ class CHRLINE(
             email_func = self.requestEmailLogin
             if device in self.TOKEN_V3_SUPPORT:
                 email_func = self.requestEmailLoginV2
-            email_func(authTokenOrEmail, password)
+            email_func(
+                authTokenOrEmail, password, autoLoginIsRequired=autoLoginIsRequired
+            )
         elif authTokenOrEmail:
             self.authToken = authTokenOrEmail
         elif phone:
-            self.requestPwlessLogin(phone, self.LINE_SERVICE_REGION)
+            self.requestPwlessLogin(
+                phone, self.LINE_SERVICE_REGION, autoLoginIsRequired=autoLoginIsRequired
+            )
         else:
             if not noLogin:
                 sqr_func = self.requestSQR
                 if device in self.TOKEN_V3_SUPPORT:
                     sqr_func = self.requestSQR3
-                for b in sqr_func():
+                for b in sqr_func(autoLoginIsRequired=autoLoginIsRequired):
                     print(b)
         if not noLogin and self.authToken:
             self.initAll()

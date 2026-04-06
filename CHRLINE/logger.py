@@ -6,7 +6,9 @@ from rich.logging import RichHandler
 
 root = logging.RootLogger(logging.INFO)
 h = RichHandler(
-    level=logging.NOTSET, show_path=True, rich_tracebacks=True,
+    level=logging.NOTSET,
+    show_path=True,
+    rich_tracebacks=True,
 )
 f = logging.Formatter("%(display_name)s %(message)s")
 f.datefmt = "[%Y/%m/%d %X]"
@@ -16,12 +18,14 @@ root.handlers = [h]
 
 loggers: Dict[str, logging.Logger] = {}
 
+
 def root_handle(record):
     dn = ""
     for n in record.name.split("."):
         dn += f"[{n.replace(' ', '_')}]"
     record.display_name = dn
     super(logging.RootLogger, root).handle(record)
+
 
 class Logger:
     def __init__(self, names: List[str]) -> None:
@@ -107,8 +111,20 @@ class Logger:
         filter1 = NsFliter(ns=names)
         h.addFilter(filter1)
 
+    def add_file_handler(self, path: str, *, level: Union[str, int] = logging.INFO):
+        fh = logging.FileHandler(path, encoding="utf-8")
+
+        # different format for file handler
+        f = logging.Formatter("[%(asctime)s] %(display_name)s %(message)s")
+        f.datefmt = "%Y/%m/%d %X"
+
+        fh.setFormatter(f)
+        fh.setLevel(level)
+        root.addHandler(fh)
+
+
 class NsFliter(logging.Filter):
-    def __init__(self, ns: Tuple[str]):
+    def __init__(self, ns: Tuple[str, ...]):
         self.ns = ns
 
     def filter(self, record):

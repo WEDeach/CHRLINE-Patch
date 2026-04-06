@@ -4,7 +4,6 @@ from ..helper import ChrHelperProtocol
 
 
 class TestService(ChrHelperProtocol):
-
     def __init__(self):
         pass
 
@@ -34,5 +33,5 @@ class TestService(ChrHelperProtocol):
         params = m_args
         sqrd = self.client.generateDummyProtocol(m_name, params, req_thrift_type)
         return self.client.postPackDataAndGetUnpackRespData(
-            api_path, sqrd, res_thrift_type
+            api_path, sqrd, res_thrift_type, expectedRespCode=[200, 400, 401, 403]
         )

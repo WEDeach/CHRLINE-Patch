@@ -34,12 +34,13 @@ from .serializers.DummyProtocol import (
     DummyProtocolSerializer,
     DummyThrift,
 )
+from .serializers.ProtobufSerializer import ProtobufSerializer
 from .utils.patchs import p_patch_all
 from .utils.reqlog import log_request
 
 if TYPE_CHECKING:
     from .services.thrift import ttypes
-    
+
 
 class Models(ChrHelperProtocol):
     def __init__(self, savePath):
@@ -336,7 +337,10 @@ class Models(ChrHelperProtocol):
             elif _type in [14, 15]:
                 if _data[1] is None:
                     continue
-            if proto == 3:
+            if proto == -2:
+                data += ProtobufSerializer.serialize(_type, _id, _data)
+                continue
+            elif proto == 3:
                 data += [_type, 0, _id]
                 isCompact = False
             elif proto == 4:
@@ -426,7 +430,25 @@ class Models(ChrHelperProtocol):
         if access_token is None:
             access_token = self.authToken
         ptype = "TBINARY" if ttype == 3 else "TCOMPACT"
-        if ttype in [1, 2, 3, 4, 5]:
+        if ttype == -2:
+            if "x-line-application" in headers:
+                del headers["x-line-application"]
+            if "x-lpv" in headers:
+                del headers["x-lpv"]
+            if "x-lhm" in headers:
+                del headers["x-lhm"]
+            headers["content-type"] = "application/grpc"
+            headers["te"] = "trailers"
+            # access_token += "_test_FAILED_EXCEPTION"
+            headers["x-line-application-type"] = self.client.APP_TYPE
+            headers["x-line-application-version"] = self.client.APP_VER
+            headers["x-line-system-name"] = self.client.SYSTEM_NAME
+            headers["x-line-system-version"] = self.client.SYSTEM_VER
+            headers["User-Agent"] = "grpc-java-okhttp/1.76.0"
+            headers["grpc-accept-encoding"] = "gzip"
+            headers["X-B3-TraceID"] = os.urandom(16).hex()
+            headers["X-B3-SpanID"] = os.urandom(8).hex()
+        elif ttype in [1, 2, 3, 4, 5]:
             headers["content-type"] = "application/x-thrift; protocol=" + ptype
             # headers["accept"] = "application/x-thrift"
             if isinstance(bdata, DummyProtocolSerializer):
@@ -585,6 +607,32 @@ class Models(ChrHelperProtocol):
             elif ttype == -3:
                 # JSON RAW
                 return json.loads(data)
+            elif ttype == -2:
+                # Grpc
+                status = int(conn_res.headers.get("grpc-status", 0))
+                if status != 0:
+                    status_message = conn_res.headers.get("grpc-message", "")
+                    status_metadata = conn_res.headers.get(
+                        "grpc-status-details-bin", ""
+                    )
+                    if status_metadata and status_metadata != "":
+                        status_metadata = base64.b64decode(
+                            status_metadata + "=" * (-len(status_metadata) % 4)
+                        )
+                        status_metadata = ProtobufSerializer.deserialize(
+                            status_metadata
+                        )
+                    raise LineServiceException(
+                        {
+                            "code": status,
+                            "message": status_message,
+                            "metadata": status_metadata,
+                            "raw": status_metadata,
+                        }
+                    )
+                # hehe
+                res = ProtobufSerializer.deserialize(data[5:])
+                return res
             elif ttype == -1:
                 # CONTENT RAW
                 return data
@@ -665,6 +713,10 @@ class Models(ChrHelperProtocol):
             self.client.log("----------------- END POST", True)
             return res
         elif res.status_code in [400, 401, 403]:
+            # 在 LPV 不為 0 的情況下 伺服器理應回覆 200 OK
+            self.client.log(
+                f"Unauthorized: {res.status_code}, set the client as not login."
+            )
             self.is_login = False
         elif res.status_code == 410:
             return None
@@ -860,15 +912,20 @@ class Models(ChrHelperProtocol):
 
     def readGenThrifts(self):
         path = os.path.join(os.path.dirname(__file__), "services", "thrift")
-        if self.client.path_gen_thrift is not None and self.client.path_gen_thrift.strip() != "":
+        if (
+            self.client.path_gen_thrift is not None
+            and self.client.path_gen_thrift.strip() != ""
+        ):
             path = self.client.path_gen_thrift
-            self.__logger.info(f"Read GenThrifts from '{self.client.path_gen_thrift}'...")
+            self.__logger.info(
+                f"Read GenThrifts from '{self.client.path_gen_thrift}'..."
+            )
 
         module_files = glob.glob(os.path.join(path, "*.py"))
 
         # Fixed static name to solve import error
         # https://gemini.google.com/share/3daea3d8f2e0
-        package_name =  f"{__package__}.services.custom_thrifts"
+        package_name = f"{__package__}.services.custom_thrifts"
         package = ModuleType(package_name)
         package.__path__ = [path]
         sys.modules[package_name] = package
@@ -880,7 +937,7 @@ class Models(ChrHelperProtocol):
                 continue
             module_name = filename[:-3]
             spec_name = f"{package_name}.{module_name}"
-            
+
             if spec_name in sys.modules:
                 # Skip if already imported
                 # and put it to globals :)
@@ -905,10 +962,13 @@ class Models(ChrHelperProtocol):
         if clientType == 0:
             return requests.session(**kwargs)
         elif clientType == 1:
-            return httpx.Client(http2=True, verify=ssl.create_default_context(), **kwargs)
+            return httpx.Client(
+                http2=True, verify=ssl.create_default_context(), **kwargs
+            )
 
         # ENV: dev
         from curl_cffi import requests as curl_requests
+
         return curl_requests.Session(**kwargs)
 
     def tryReadThriftContainerStruct(self, data, id=0, get_data_len=False):

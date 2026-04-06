@@ -1,3 +1,4 @@
+import struct
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
@@ -535,7 +536,13 @@ class DummyProtocolSerializer:
         data = []
         instance = self.instance
         protocol = self.protocol
-        if protocol == 3:
+        if protocol == -2:
+            # ref to https://github.com/DeachSword/deachsword-web-2024/blob/3cf1b316b94e6648df01e85600d08415b2adcd6c/web-worker/api/D4DJ/model.py#L420
+            # pack data with 0x00 + 4 bytes of length, and data
+            payload = instance.generateDummyProtocolField(self.data, protocol)
+            header = struct.pack(">BI", 0, len(payload))
+            return header + bytes(payload)
+        elif protocol == 3:
             data = [128, 1, 0, 1] + instance.getStringBytes(self.name) + [0, 0, 0, 0]
         elif protocol in [4, 5]:
             protocol = 4

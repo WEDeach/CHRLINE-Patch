@@ -66,4 +66,6 @@ class BaseServiceSender(BaseServiceHandler):
             payloads["bdata"] = self.cl.generateDummyProtocol(
                 method_name, params, self.req_type
             )
+        if payloads["ttype"] == -2:
+            payloads["path"] += f"/{method_name}"
         return self.cl.postPackDataAndGetUnpackRespData(**payloads)

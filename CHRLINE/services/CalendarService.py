@@ -53,3 +53,49 @@ class CalendarService(BaseService):
         METHOD_NAME = "ListAllCalendars"
         params = []
         return self.sendRequest(METHOD_NAME, params)
+
+    def getChatCalendar(self, chatroomId: str):
+        METHOD_NAME = "GetChatCalendar"
+        params = [[11, 1, chatroomId]]
+        return self.sendRequest(METHOD_NAME, params)
+
+    def updateCalendars(self, calendars: list):
+        METHOD_NAME = "UpdateCalendars"
+        updates = []
+        for calendar in calendars:
+            update = [
+                [11, 1, calendar[2]],  # id
+                [11, 2, calendar[7]],  # chatroomId
+                [11, 3, calendar[1]],  # name
+                [8, 4, calendar[6]],  # colorId
+                [2, 5, calendar[3]],  # isVisible
+                [2, 6, calendar[4]],  # isFavorite
+                [10, 7, calendar[11]],  # clientUpdatedAt
+                [2, 8, calendar[13]],  # isReminderEnabled
+                [2, 9, calendar[15]],  # isShownInCalendarList
+            ]
+            updates.append(update)
+        params = [[15, 1, [12, updates]]]
+        return self.sendRequest(METHOD_NAME, params)
+
+    def createChatCalendar(self, chatroomId: str):
+        METHOD_NAME = "CreateChatCalendar"
+        params = [[11, 1, chatroomId]]
+        return self.sendRequest(METHOD_NAME, params)
+
+    def createPersonalCalendar(self, _id: str, name: str, colorId: int):
+        METHOD_NAME = "CreatePersonalCalendar"
+        params = [
+            [11, 1, _id],
+            [11, 2, name],
+            [8, 3, colorId],
+        ]
+        return self.sendRequest(METHOD_NAME, params)
+
+    def deletePersonalCalendar(self, _id: str, clientUpdatedAt: int):
+        METHOD_NAME = "DeletePersonalCalendar"
+        params = [
+            [11, 1, _id],
+            [10, 2, clientUpdatedAt],
+        ]
+        return self.sendRequest(METHOD_NAME, params)

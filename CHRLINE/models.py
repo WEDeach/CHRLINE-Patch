@@ -610,6 +610,14 @@ class Models(ChrHelperProtocol):
             elif ttype == -2:
                 # Grpc
                 status = int(conn_res.headers.get("grpc-status", 0))
+                if readWith is not None:
+                    ins = None
+                    try:
+                        ins = eval(f"{readWith}_result")()
+                    except AttributeError:
+                        pass
+                    except NameError:
+                        pass
                 if status != 0:
                     status_message = conn_res.headers.get("grpc-message", "")
                     status_metadata = conn_res.headers.get(
@@ -630,9 +638,10 @@ class Models(ChrHelperProtocol):
                             "raw": status_metadata,
                         }
                     )
-                # hehe
-                res = ProtobufSerializer.deserialize(data[5:])
-                return res
+                def _wrap(thrift_ins):
+                    return DummyThrift.wrap_thrift(self.client, thrift_ins, not self.client.use_thrift)
+                res = ProtobufSerializer.deserialize(data[5:], ins, wrap_fn=_wrap)
+                return getattr(res, "success", res)
             elif ttype == -1:
                 # CONTENT RAW
                 return data

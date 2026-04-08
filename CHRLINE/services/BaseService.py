@@ -58,7 +58,7 @@ class BaseServiceSender(BaseServiceHandler):
         payloads = {
             "path": self.endpoint,
             "ttype": self.res_type,
-            "readWith": f"{self.name}.{method_name}",
+            "readWith": f"{self.name}.{method_name[0].lower()}{method_name[1:]}",
             "baseException": self.base_exception,
         }
         payloads.update(kwargs)

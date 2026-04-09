@@ -46,7 +46,7 @@ def log_request(func):
             entry["resp"] = res
         except Exception as e:
             entry["err"] = str(e)
-            raise e
+            raise
         finally:
             _req_logs.append(entry)
         return res
@@ -65,28 +65,31 @@ def dump_logs():
     P_REQ = "        "
 
     t_uint = _all[0]["ts"].strftime("%Y%m%d%H%M%S")
-    with open(f"CHReqLog_{t_uint}.txt", "wb") as f:
-        _seq = 0
-        for entry in _all:
-            if "mid" in entry:
-                f.write(b"# ----------------------------------\n")
-                f.write(f"{P_USR}Date: {entry['ts'].isoformat()}\n".encode())
-                f.write(f"{P_USR}Mid: {entry['mid']}\n".encode())
-                f.write(f"{P_USR}AuthToken: {entry['at']}\n".encode())
-                f.write(f"{P_USR}Headers: {entry['headers']}\n".encode())
-                _seq = 0
-            else:
-                f.write(f"{P_USR}[{_seq}] ================================\n".encode())
-                f.write(f"{P_REQ}Date: {entry['ts'].isoformat()}\n".encode())
-                f.write(f"{P_REQ}Request: {entry['req']}\n".encode())
-                if entry["resp"] is not None:
-                    r = entry["resp"]
-                    f.write(f"{P_REQ}Response: {r} {r.headers}\n".encode())
-                    f.write(f"{P_REQ}{P_REQ}{r.content.hex()}\n".encode())
-                if entry["err"] is not None:
-                    f.write(f"{P_REQ}Error: {entry['err']}\n".encode())
-                f.write(b"\n")
-                _seq += 1
+    try:
+        with open(f"CHReqLog_{t_uint}.txt", "wb") as f:
+            _seq = 0
+            for entry in _all:
+                if "mid" in entry:
+                    f.write(b"# ----------------------------------\n")
+                    f.write(f"{P_USR}Date: {entry['ts'].isoformat()}\n".encode())
+                    f.write(f"{P_USR}Mid: {entry['mid']}\n".encode())
+                    f.write(f"{P_USR}AuthToken: {entry['at']}\n".encode())
+                    f.write(f"{P_USR}Headers: {entry['headers']}\n".encode())
+                    _seq = 0
+                else:
+                    f.write(f"{P_USR}[{_seq}] ================================\n".encode())
+                    f.write(f"{P_REQ}Date: {entry['ts'].isoformat()}\n".encode())
+                    f.write(f"{P_REQ}Request: {entry['req']}\n".encode())
+                    if entry["resp"] is not None:
+                        r = entry["resp"]
+                        f.write(f"{P_REQ}Response: {r} {r.headers}\n".encode())
+                        f.write(f"{P_REQ}{P_REQ}{r.content.hex()}\n".encode())
+                    if entry["err"] is not None:
+                        f.write(f"{P_REQ}Error: {entry['err']}\n".encode())
+                    f.write(b"\n")
+                    _seq += 1
+    except Exception as e:
+        sys.stderr.write(f"[reqlog] dump_logs failed: {e}\n")
 
 
 def _on_exception(exc_type, exc_value, exc_tb):

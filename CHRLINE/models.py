@@ -610,8 +610,8 @@ class Models(ChrHelperProtocol):
             elif ttype == -2:
                 # Grpc
                 status = int(conn_res.headers.get("grpc-status", 0))
-                if readWith is not None:
-                    ins = None
+                ins = None
+                if readWith is not None and self.client.use_thrift:
                     try:
                         ins = eval(f"{readWith}_result")()
                     except AttributeError:
@@ -638,10 +638,14 @@ class Models(ChrHelperProtocol):
                             "raw": status_metadata,
                         }
                     )
+
                 def _wrap(thrift_ins):
-                    return DummyThrift.wrap_thrift(self.client, thrift_ins, not self.client.use_thrift)
+                    return DummyThrift.wrap_thrift(
+                        self.client, thrift_ins, not self.client.use_thrift
+                    )
+
                 res = ProtobufSerializer.deserialize(data[5:], ins, wrap_fn=_wrap)
-                return getattr(res, "success", res)
+                return getattr(res, "success", res) if self.client.use_thrift else res
             elif ttype == -1:
                 # CONTENT RAW
                 return data

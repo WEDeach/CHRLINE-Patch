@@ -12,7 +12,11 @@ from .services.AccountAuthFactorEapConnectService import (
 )
 from .services.AuthService import AuthService
 from .services.BuddyService import BuddyService
-from .services.CalendarService import CalendarService
+from .services.CalendarService import (
+    CalendarEventService,
+    CalendarInvitationService,
+    CalendarService,
+)
 from .services.CallService import CallService
 from .services.ChannelService import ChannelService
 from .services.ChatAppService import ChatAppService
@@ -153,6 +157,8 @@ class API(
         self.s_relogin = PrimaryAccountReLoginService(self.client)
         self.s_pwd_update = PasswordUpdateService(self.client)
         self.s_calendar = CalendarService(self.client)
+        self.s_calendar_event = CalendarEventService(self.client)
+        self.s_calendar_invitation = CalendarInvitationService(self.client)
 
     def requestPwlessLogin(self, phone, region, autoLoginIsRequired=True):
         pwless_code = self.client.checkAndGetValue(

@@ -10,6 +10,7 @@ from .models import Models
 from .object import Object
 from .poll import Poll
 from .thrift import Thrift
+from .tokenmgr import TokenManager
 from .utils.common import get_opt_env
 
 
@@ -205,6 +206,7 @@ class CHRLINE(
 
         E2EE.__init__(self)
         self.biz = BizManager(self)
+        self.channel_token_manager = TokenManager(self)
         Poll.__init__(self)
         Object.__init__(self)
 

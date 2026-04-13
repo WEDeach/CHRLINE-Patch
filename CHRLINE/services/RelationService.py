@@ -160,3 +160,15 @@ class RelationService(ChrHelperProtocol):
         ]
         params = [[12, 1, params]]
         return self.__sender.send(METHOD_NAME, params)
+
+    def getUserFriendIds(
+        self, blockStatus: int = 0, userPageToken: Optional[str] = None
+    ):
+        """Get user friend ids."""
+        METHOD_NAME = "getUserFriendIds"
+        params = [
+            [11, 1, userPageToken],
+            [8, 2, blockStatus],
+        ]
+        params = [[12, 1, params]]
+        return self.__sender.send(METHOD_NAME, params)

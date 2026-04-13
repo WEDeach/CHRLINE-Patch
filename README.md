@@ -43,21 +43,28 @@ But if you can use this project to understand the differences in LINE thrift
 ## 版本變化
 
 此庫通常以一個中間版本來詮釋重點改變(1.0.7 -> 1.1.0)
+
 以一個大版本來詮釋重大改變(1.5.2 -> 2.0.0)
+
+---
 
 起初本庫是依於LINE Chrome版本反編譯而成, 使用`x-le`以及`x-lcs`來進行請求
 
 後來在[1.4.0](https://github.com/DeachSword/CHRLINE/commit/d7d8430e74417a06c9ad159a5675b7787ec75c54)中實現了`TMoreCompact`協議, 這是LINE在2013(可能更早)導用的專屬thrift緊湊協議, 你可以在[這裡查看那是甚麼](/docs/TMoreCompact.md)
+
 在`2.0.0`中導用了thrift原生庫, 你可以使用`useThrift`來轉換Dict至已定義的thrift類型
+
 在`2.5.0`中實現了`/PUSH`端點的支持, 它類似於SPDY, 用於HTTP2的長輪詢(但它不使用*Server Push* :v)
 
 **在這個時候LINE Chrome有重大改變, 此庫已不完全支持`CHROMEOS`**
 
 ---
 
-在`2.6.0`中(*當前版本*) 添加`DummyThrfit`, 它更方便的檢查當前已定義的thrift缺失了哪些Field, 對於LINE版本更新很有幫助. 與此同時, 也同時支持了[E2EE Next](https://github.com/WEDeach/CHRLINE-Patch/commit/b3da065209ee4e7a4f8e00e82c96a8b8245d2465#diff-efc570a8ac227398796cf43d8035cb624fa9d94bc8bfedd01922cddb2f838fa3R2), 如果你不知道那是甚麼, 在[這裡查看](/docs/E2EE_Next.md)它!
+在`2.6.0`中添加`DummyThrfit`, 它更方便的檢查當前已定義的thrift缺失了哪些Field, 對於LINE版本更新很有幫助. 與此同時, 也同時支持了[E2EE Next](https://github.com/WEDeach/CHRLINE-Patch/commit/b3da065209ee4e7a4f8e00e82c96a8b8245d2465#diff-efc570a8ac227398796cf43d8035cb624fa9d94bc8bfedd01922cddb2f838fa3R2), 如果你不知道那是甚麼, 在[這裡查看](/docs/E2EE_Next.md)它!
 > [!CAUTION]
 > v2.6.0 移除了 `cube.py` 以及 `timeline.py`, 並將其重寫為 BIZ 服務, 整體架構有大幅度的改變!
+
+在`2.7.0`中(*當前版本*)實現了gRPC協議, 它主要用於 **LINE Premium** 服務 以及 **LINE行事曆(Calendar)**
 
 ## Requirement
 

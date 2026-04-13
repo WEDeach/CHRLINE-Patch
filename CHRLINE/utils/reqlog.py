@@ -19,7 +19,7 @@ def log_request(func):
             "ts": datetime.datetime.now(),
             "mid": getattr(self, "mid", None),
             "at": self.authToken,
-            "headers": self.server.Headers
+            "headers": self.server.Headers,
         }
         old = _usr_logs[-1] if len(_usr_logs) > 0 else None
         if old is None or old != now:
@@ -77,7 +77,9 @@ def dump_logs():
                     f.write(f"{P_USR}Headers: {entry['headers']}\n".encode())
                     _seq = 0
                 else:
-                    f.write(f"{P_USR}[{_seq}] ================================\n".encode())
+                    f.write(
+                        f"{P_USR}[{_seq}] ================================\n".encode()
+                    )
                     f.write(f"{P_REQ}Date: {entry['ts'].isoformat()}\n".encode())
                     f.write(f"{P_REQ}Request: {entry['req']}\n".encode())
                     if entry["resp"] is not None:
@@ -97,5 +99,6 @@ def _on_exception(exc_type, exc_value, exc_tb):
     sys.__excepthook__(exc_type, exc_value, exc_tb)
 
 
-atexit.register(dump_logs)
-sys.excepthook = _on_exception
+def register():
+    atexit.register(dump_logs)
+    sys.excepthook = _on_exception

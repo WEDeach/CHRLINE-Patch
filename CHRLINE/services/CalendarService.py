@@ -228,14 +228,15 @@ class CalendarEventService(CalendarBaseService):
             new_event.append([11, 8, url])
         if description is not None:
             new_event.append([11, 9, description])
-        recurrence = [
-            [8, 1, recurrenceFrequency],
-            [8, 2, recurrenceInterval],
-            [10, 3, recurrenceUntil],
-            [15, 4, [11, recurrenceByDay]],
-            [15, 5, [8, recurrenceExceptIds]],
-        ]
-        new_event.append([12, 10, recurrence])
+        if recurrenceFrequency is not None or recurrenceInterval is not None or recurrenceUntil is not None or recurrenceByDay is not None or recurrenceExceptIds is not None:
+            recurrence = [
+                [8, 1, recurrenceFrequency],
+                [8, 2, recurrenceInterval],
+                [10, 3, recurrenceUntil],
+                [15, 4, [11, recurrenceByDay]],
+                [15, 5, [8, recurrenceExceptIds]],
+            ]
+            new_event.append([12, 10, recurrence])
         if inviteeMids is not None:
             invitees = [
                 [[11, 1, mid], [8, 3, status]] for mid, status in inviteeMids.items()

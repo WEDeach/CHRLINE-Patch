@@ -7,5 +7,4 @@
 /CHRLINE/.refreshToken
 
 # DO NOT UPDATE THRIFT FILES PUBLIC THIS REPO
-/CHRLINE/services/thrift/*Service.py
-/CHRLINE/services/thrift/*Service-remote
+/CHRLINE/services/thrift/*

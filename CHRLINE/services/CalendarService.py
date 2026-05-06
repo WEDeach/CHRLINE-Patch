@@ -150,7 +150,7 @@ class CalendarEventService(CalendarBaseService):
                 [11, 8, event[9]],  # url
                 [11, 9, event[10]],  # description
                 [11, 14, event[15]],  # messageId
-                [10, 16, event[17]],  # clientUpdatedAt
+                [10, 16, int(time.time())],  # clientUpdatedAt
                 [2, 17, notifyToChatroom],
                 [8, 18, event[20]],  # colorId
                 [11, 20, event[22]],  # stampId
@@ -228,7 +228,13 @@ class CalendarEventService(CalendarBaseService):
             new_event.append([11, 8, url])
         if description is not None:
             new_event.append([11, 9, description])
-        if recurrenceFrequency is not None or recurrenceInterval is not None or recurrenceUntil is not None or recurrenceByDay is not None or recurrenceExceptIds is not None:
+        if (
+            recurrenceFrequency is not None
+            or recurrenceInterval is not None
+            or recurrenceUntil is not None
+            or recurrenceByDay is not None
+            or recurrenceExceptIds is not None
+        ):
             recurrence = [
                 [8, 1, recurrenceFrequency],
                 [8, 2, recurrenceInterval],

@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 from rich.logging import RichHandler
 
-root = logging.RootLogger(logging.INFO)
+root = logging.RootLogger(logging.NOTSET)
 h = RichHandler(
     level=logging.NOTSET,
     show_path=True,
@@ -100,7 +100,7 @@ class Logger:
         return self.ins.log
 
     def set_level(self, level: Union[str, int]):
-        self.ins.setLevel(level)
+        h.setLevel(level)
 
     def set_root_level(self, level: Union[str, int]):
         """Set root-logger level."""

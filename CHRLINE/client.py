@@ -43,7 +43,6 @@ class CHRLINE(
         forceTMCP: Optional[bool] = None,
         savePath: Optional[str] = None,
         os_model: Optional[str] = None,
-        rootLogLevel: int = 20,
         logFilterNs: List[str] = [],
         logFileWithLevel: Optional[List[Tuple[str, int]]] = None,
         *,
@@ -105,9 +104,9 @@ class CHRLINE(
         self.__squares: Any = None
         ChrHelper.__init__(self, cl=self)
         self.logger = self.get_logger()
-        if self.isDebug:
-            rootLogLevel = 0
-        self.logger.set_root_level(rootLogLevel)
+
+        if not self.isDebug:
+            self.logger.set_level(20)
         if logFilterNs:
             self.logger.add_log_fliters(*logFilterNs)
         if logFileWithLevel is not None:

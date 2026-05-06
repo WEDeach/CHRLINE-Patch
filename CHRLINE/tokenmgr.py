@@ -5,6 +5,8 @@ from .serializers.DummyProtocol import DummyThrift
 if TYPE_CHECKING:
     from .client import CHRLINE
 
+# TODO: 檢測token過期時間，並刷新token
+#       即使ACCESS TOKEN過期, CHANNEL TOKEN的過期時間並不會被影響
 
 class TokenManager:
     def __init__(self, client: "CHRLINE"):

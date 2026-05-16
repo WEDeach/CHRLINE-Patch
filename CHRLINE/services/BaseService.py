@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Dict, Optional
 
 if TYPE_CHECKING:
@@ -52,9 +53,19 @@ class BaseServiceSender(BaseServiceHandler):
         self.res_type = res_type
         self.endpoint = endpoint
         self.base_exception = baseException
+        self._dummy_resp = False
+
+    @contextmanager
+    def dummy_resp(self):
+        self._dummy_resp = True
+        try:
+            yield self
+        finally:
+            self._dummy_resp = False
 
     def send(self, method_name: str, params: list, **kwargs):
         """Send reqest by method name and params."""
+        dummy_resp = kwargs.pop("dummy_resp", False) or self._dummy_resp
         payloads = {
             "path": self.endpoint,
             "ttype": self.res_type,
@@ -66,6 +77,8 @@ class BaseServiceSender(BaseServiceHandler):
             payloads["bdata"] = self.cl.generateDummyProtocol(
                 method_name, params, self.req_type
             )
+        if dummy_resp:
+            return bytes(payloads["bdata"])
         if payloads["ttype"] == -2:
             payloads["path"] += f"/{method_name}"
         return self.cl.postPackDataAndGetUnpackRespData(**payloads)
